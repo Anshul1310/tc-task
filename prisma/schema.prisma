@@ -1,0 +1,61 @@
+// ──────────────────────────────────────────────
+// Prisma Schema for Campus Lost & Found
+// ──────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ──────────────────────────────────────────────
+// User — created when someone logs in via DAuth
+// ──────────────────────────────────────────────
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  items Item[] // One user can have many lost/found items
+}
+
+// ──────────────────────────────────────────────
+// Item — a lost or found item reported by a user
+//
+// NOTE: textEmbedding and imageEmbedding columns
+// are NOT here because Prisma has no Vector type.
+// We add them via raw SQL after migration. See the
+// migration SQL in prisma/migrations/ folder.
+// ──────────────────────────────────────────────
+model Item {
+  id              Int      @id @default(autoincrement())
+  title           String
+  description     String
+  category        String
+  location        String
+  dateLostOrFound DateTime
+  status          Status   @default(LOST)
+  images          String[] // File paths like ["uploads/abc123.jpg"]
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// Status — tracks whether an item is lost, found,
+// or has been claimed by its owner
+// ──────────────────────────────────────────────
+enum Status {
+  LOST
+  FOUND
+  CLAIMED
+}

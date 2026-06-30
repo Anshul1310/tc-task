@@ -1,0 +1,65 @@
+# ──────────────────────────────────────────────
+# Docker Compose
+#
+# Starts two services:
+#   1. db   — PostgreSQL with pgvector extension
+#   2. app  — Node.js backend
+#
+# Usage:
+#   docker compose up        (start both)
+#   docker compose up -d     (start in background)
+#   docker compose down      (stop both)
+#   docker compose logs app  (view backend logs)
+# ──────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL + pgvector ──────────────────
+  db:
+    # pgvector/pgvector:pg17 comes with pgvector pre-installed
+    image: pgvector/pgvector:pg17
+    container_name: lostandfound-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: lostandfound
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persist database data across restarts
+      - pgdata:/var/lib/postgresql/data
+      # Run init script to enable pgvector extension
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Node.js Backend ────────────────────────
+  app:
+    container_name: lostandfound-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:password@db:5432/lostandfound?schema=public
+      DAUTH_CLIENT_ID: ${DAUTH_CLIENT_ID}
+      DAUTH_CLIENT_SECRET: ${DAUTH_CLIENT_SECRET}
+      DAUTH_REDIRECT_URI: ${DAUTH_REDIRECT_URI}
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      SESSION_SECRET: ${SESSION_SECRET}
+    volumes:
+      # Persist uploaded images
+      - ./src/uploads:/app/src/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
