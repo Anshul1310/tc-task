@@ -21,10 +21,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: 14dc
       POSTGRES_DB: lostandfound
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       # Persist database data across restarts
       - pgdata:/var/lib/postgresql/data

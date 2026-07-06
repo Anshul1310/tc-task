@@ -10,6 +10,7 @@
 
 const prisma = require("../config/db");
 const dauthService = require("../services/dauthService");
+const { generateUniqueUsername, getRandomAvatarColor } = require("../utils/usernameGenerator");
 
 // Redirect the user to DAuth's login page
 async function login(req, res) {
@@ -33,21 +34,39 @@ async function callback(req, res) {
     // Fetch user profile from DAuth
     const profile = await dauthService.getUserProfile(accessToken);
 
-    // Create user in our DB if they don't exist yet
-    const user = await prisma.user.upsert({
+    // Check if user exists first to avoid generating names unnecessarily
+    let user = await prisma.user.findUnique({
       where: { email: profile.email },
-      update: { name: profile.name },
-      create: {
-        email: profile.email,
-        name: profile.name,
-      },
     });
+
+    if (user) {
+      // Update existing user
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { name: profile.name },
+      });
+    } else {
+      // Create new user with anonymous identity
+      const anonymousUsername = await generateUniqueUsername();
+      const avatarColor = getRandomAvatarColor();
+
+      user = await prisma.user.create({
+        data: {
+          email: profile.email,
+          name: profile.name,
+          anonymousUsername,
+          avatarColor,
+        },
+      });
+    }
 
     // Store user info in session (this is how we "remember" the login)
     req.session.user = {
       id: user.id,
       email: user.email,
       name: user.name,
+      anonymousUsername: user.anonymousUsername,
+      avatarColor: user.avatarColor,
     };
 
     res.json({

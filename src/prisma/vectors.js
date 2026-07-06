@@ -90,4 +90,67 @@ async function searchByVector(embedding, type = "text", limit = 10) {
   }));
 }
 
-module.exports = { findSimilarItems, searchByVector };
+// ── Discussions Similarity ──────────────────
+async function findSimilarDiscussions(textEmbedding, imageEmbedding, limit = 5) {
+  let query = "";
+  const params = [];
+
+  // Determine which query to run based on available embeddings
+  if (textEmbedding && imageEmbedding) {
+    const textVector = `[${textEmbedding.join(",")}]`;
+    const imageVector = `[${imageEmbedding.join(",")}]`;
+    query = `
+      SELECT
+        id AS "discussionId",
+        title,
+        description,
+        0.7 * (1 - ("textEmbedding" <=> $1::vector)) + 0.3 * (1 - ("imageEmbedding" <=> $2::vector)) AS similarity
+      FROM "Discussion"
+      WHERE "textEmbedding" IS NOT NULL AND "imageEmbedding" IS NOT NULL
+      ORDER BY 0.7 * (1 - ("textEmbedding" <=> $1::vector)) + 0.3 * (1 - ("imageEmbedding" <=> $2::vector)) DESC
+      LIMIT $3
+    `;
+    params.push(textVector, imageVector, limit);
+  } else if (textEmbedding) {
+    const textVector = `[${textEmbedding.join(",")}]`;
+    query = `
+      SELECT
+        id AS "discussionId",
+        title,
+        description,
+        1 - ("textEmbedding" <=> $1::vector) AS similarity
+      FROM "Discussion"
+      WHERE "textEmbedding" IS NOT NULL
+      ORDER BY "textEmbedding" <=> $1::vector ASC
+      LIMIT $2
+    `;
+    params.push(textVector, limit);
+  } else if (imageEmbedding) {
+    const imageVector = `[${imageEmbedding.join(",")}]`;
+    query = `
+      SELECT
+        id AS "discussionId",
+        title,
+        description,
+        1 - ("imageEmbedding" <=> $1::vector) AS similarity
+      FROM "Discussion"
+      WHERE "imageEmbedding" IS NOT NULL
+      ORDER BY "imageEmbedding" <=> $1::vector ASC
+      LIMIT $2
+    `;
+    params.push(imageVector, limit);
+  } else {
+    return [];
+  }
+
+  const matches = await prisma.$queryRawUnsafe(query, ...params);
+
+  return matches.map((m) => ({
+    discussionId: Number(m.discussionId),
+    title: m.title,
+    description: m.description,
+    similarity: parseFloat(Number(m.similarity).toFixed(4)),
+  }));
+}
+
+module.exports = { findSimilarItems, searchByVector, findSimilarDiscussions };

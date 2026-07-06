@@ -15,12 +15,18 @@ package com.anshul.campuscare.data.network
 //   Search: POST /search/text, POST /search/image
 // ──────────────────────────────────────────────
 
+import com.anshul.campuscare.data.model.CommentResponse
 import com.anshul.campuscare.data.model.CreateItemResponse
 import com.anshul.campuscare.data.model.DeleteItemResponse
+import com.anshul.campuscare.data.model.DiscussionsResponse
 import com.anshul.campuscare.data.model.ItemListResponse
 import com.anshul.campuscare.data.model.ItemResponse
 import com.anshul.campuscare.data.model.LogoutResponse
+import com.anshul.campuscare.data.model.NotificationsResponse
+import com.anshul.campuscare.data.model.ReplyResponse
+import com.anshul.campuscare.data.model.SearchDiscussionsResponse
 import com.anshul.campuscare.data.model.SearchResponse
+import com.anshul.campuscare.data.model.SingleDiscussionResponse
 import com.anshul.campuscare.data.model.TextSearchRequest
 import com.anshul.campuscare.data.model.UserResponse
 import okhttp3.MultipartBody
@@ -28,6 +34,8 @@ import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
@@ -72,6 +80,76 @@ interface ApiService {
     suspend fun getItemById(
         @Path("id") itemId: Int
     ): Response<ItemResponse>
+
+    /**
+     * Get similar items for a given item (opposite status).
+     * E.g. If viewing a Lost item, returns similar Found items.
+     */
+    @GET("items/{id}/similar")
+    suspend fun getSimilarItems(@Path("id") itemId: Int): Response<SearchResponse>
+
+    // ── Community Discussions ──────────────────────────────────────────
+
+    @GET("discussions")
+    suspend fun getAllDiscussions(): Response<DiscussionsResponse>
+
+    @GET("discussions/trending")
+    suspend fun getTrendingDiscussions(): Response<DiscussionsResponse>
+
+    @GET("discussions/{id}")
+    suspend fun getDiscussionById(@Path("id") discussionId: Int): Response<SingleDiscussionResponse>
+
+    @Multipart
+    @POST("discussions")
+    suspend fun createDiscussion(
+        @Part("title") title: RequestBody,
+        @Part("description") description: RequestBody,
+        @Part("latitude") latitude: RequestBody?,
+        @Part("longitude") longitude: RequestBody?,
+        @Part("buildingName") buildingName: RequestBody?,
+        @Part("createAnyway") createAnyway: RequestBody?,
+        @Part images: List<MultipartBody.Part>
+    ): Response<SingleDiscussionResponse>
+
+    @POST("discussions/{id}/upvote")
+    suspend fun toggleUpvote(@Path("id") discussionId: Int): Response<Any>
+
+    @Multipart
+    @POST("discussions/{id}/comments")
+    suspend fun addComment(
+        @Path("id") discussionId: Int,
+        @Part("text") text: RequestBody,
+        @Part image: MultipartBody.Part?
+    ): Response<CommentResponse>
+
+    @FormUrlEncoded
+    @POST("comments/{id}/replies")
+    suspend fun addReply(
+        @Path("id") commentId: Int,
+        @Field("text") text: String
+    ): Response<ReplyResponse>
+
+    // ── Notifications ───────────────────────────────────────────────
+
+    @GET("notifications")
+    suspend fun getNotifications(): Response<NotificationsResponse>
+
+    @PATCH("notifications/{id}/read")
+    suspend fun markNotificationAsRead(@Path("id") notificationId: Int): Response<Any>
+
+    // ── Community Search ────────────────────────────────────────────
+
+    @FormUrlEncoded
+    @POST("community/search/text")
+    suspend fun searchDiscussionsByText(
+        @Field("query") query: String
+    ): Response<SearchDiscussionsResponse>
+
+    @Multipart
+    @POST("community/search/image")
+    suspend fun searchDiscussionsByImage(
+        @Part image: MultipartBody.Part
+    ): Response<SearchDiscussionsResponse>
 
     /**
      * Create a new lost or found item.

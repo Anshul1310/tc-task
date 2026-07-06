@@ -13,6 +13,7 @@ package com.anshul.campuscare.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.webkit.MimeTypeMap
 import com.anshul.campuscare.data.model.CreateItemResponse
 import com.anshul.campuscare.data.model.Item
 import com.anshul.campuscare.data.model.SearchMatch
@@ -103,6 +104,23 @@ object ItemRepository {
                 }
             } else {
                 Result.failure(Exception("Failed to fetch item: ${response.code()}"))
+            }
+        } catch (exception: Exception) {
+            Result.failure(exception)
+        }
+    }
+
+    /**
+     * Get similar items for a given item.
+     */
+    suspend fun getSimilarItems(itemId: Int): Result<List<SearchMatch>> {
+        return try {
+            val response = apiService.getSimilarItems(itemId)
+            if (response.isSuccessful) {
+                val matches = response.body()?.matches ?: emptyList()
+                Result.success(matches)
+            } else {
+                Result.failure(Exception("Failed to fetch similar items: ${response.code()}"))
             }
         } catch (exception: Exception) {
             Result.failure(exception)
@@ -307,11 +325,14 @@ object ItemRepository {
                 val bytes: ByteArray = inputStream.readBytes()
                 inputStream.close()
 
+                val mimeType: String = context.contentResolver.getType(uri) ?: "image/jpeg"
+
                 val requestBody: RequestBody = bytes.toRequestBody(
-                    "image/*".toMediaTypeOrNull()
+                    mimeType.toMediaTypeOrNull()
                 )
 
-                val fileName: String = "image_${System.currentTimeMillis()}.jpg"
+                val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "jpg"
+                val fileName: String = "image_${System.currentTimeMillis()}.$extension"
 
                 val part: MultipartBody.Part = MultipartBody.Part.createFormData(
                     name = partName,

@@ -69,6 +69,8 @@ fun HomeScreen(
     onNavigateToDetail: (Int) -> Unit,
     onNavigateToCreate: () -> Unit,
     onNavigateToSearch: () -> Unit,
+    onNavigateToCommunity: () -> Unit,
+    onNavigateToNotifications: () -> Unit,
     onLogout: () -> Unit
 ) {
     // ── State ─────────────────────────────────
@@ -161,6 +163,14 @@ fun HomeScreen(
                     // Search button
                     IconButton(onClick = { onNavigateToSearch() }) {
                         Text(text = "🔍", fontSize = 20.sp)
+                    }
+                    // Community button
+                    IconButton(onClick = { onNavigateToCommunity() }) {
+                        Text(text = "💬", fontSize = 20.sp)
+                    }
+                    // Notifications button
+                    IconButton(onClick = { onNavigateToNotifications() }) {
+                        Text(text = "🔔", fontSize = 20.sp)
                     }
                     // Logout button
                     IconButton(

@@ -11,8 +11,8 @@ const cors = require("cors");
 const session = require("express-session");
 const path = require("path");
 
-// Load environment variables from .env
-require("dotenv").config();
+// Load environment variables from .env (in the root folder)
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 const app = express();
 
@@ -55,10 +55,18 @@ app.get("/health", (req, res) => {
 const authRoutes = require("./routes/authRoutes");
 const itemRoutes = require("./routes/itemRoutes");
 const searchRoutes = require("./routes/searchRoutes");
+const discussionRoutes = require("./routes/discussionRoutes");
+const commentRoutes = require("./routes/commentRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+const communitySearchRoutes = require("./routes/communitySearchRoutes");
 
 app.use("/auth", authRoutes);
 app.use("/items", itemRoutes);
 app.use("/search", searchRoutes);
+app.use("/discussions", discussionRoutes);
+app.use("/", commentRoutes);
+app.use("/notifications", notificationRoutes);
+app.use("/community", communitySearchRoutes);
 
 // ── Error Handler ─────────────────────────────
 // Catches any unhandled errors from routes/middleware

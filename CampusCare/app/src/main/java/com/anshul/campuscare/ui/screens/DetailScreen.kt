@@ -58,12 +58,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import coil3.compose.AsyncImage
 import com.anshul.campuscare.data.model.Item
+import com.anshul.campuscare.data.model.SearchMatch
 import com.anshul.campuscare.data.model.User
 import com.anshul.campuscare.data.network.ApiClient
 import com.anshul.campuscare.data.repository.ItemRepository
 import com.anshul.campuscare.ui.components.StatusChip
+import com.anshul.campuscare.ui.theme.FoundColor
 import com.anshul.campuscare.ui.theme.LostColor
 import com.anshul.campuscare.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -73,11 +80,13 @@ import kotlinx.coroutines.launch
 fun DetailScreen(
     itemId: Int,
     onNavigateBack: () -> Unit,
-    onNavigateToEdit: (Int) -> Unit
+    onNavigateToEdit: (Int) -> Unit,
+    onNavigateToDetail: (Int) -> Unit
 ) {
     // ── State ─────────────────────────────────
     var item: Item? by remember { mutableStateOf(null) }
     var currentUser: User? by remember { mutableStateOf(null) }
+    var similarItems: List<SearchMatch> by remember { mutableStateOf(emptyList()) }
     var isLoading: Boolean by remember { mutableStateOf(true) }
     var errorMessage: String? by remember { mutableStateOf(null) }
     var showDeleteDialog: Boolean by remember { mutableStateOf(false) }
@@ -101,6 +110,12 @@ fun DetailScreen(
         val userResult: Result<User?> = ItemRepository.getCurrentUser()
         if (userResult.isSuccess) {
             currentUser = userResult.getOrNull()
+        }
+
+        // Load similar items
+        val similarResult = ItemRepository.getSimilarItems(itemId = itemId)
+        if (similarResult.isSuccess) {
+            similarItems = similarResult.getOrNull() ?: emptyList()
         }
 
         isLoading = false
@@ -384,6 +399,56 @@ fun DetailScreen(
                                     )
                                 } else {
                                     Text(text = "🗑️ Delete Item")
+                                }
+                            }
+                        }
+
+                        // ── Similar Items ─────
+                        if (similarItems.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(height = 24.dp))
+
+                            Text(
+                                text = "Similar Items",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            
+                            Spacer(modifier = Modifier.height(height = 12.dp))
+
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(similarItems) { match ->
+                                    Card(
+                                        modifier = Modifier
+                                            .width(160.dp)
+                                            .clickable { onNavigateToDetail(match.itemId) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp)
+                                        ) {
+                                            StatusChip(status = match.status)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = match.title,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 2
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            val percent = (match.similarity * 100).toInt()
+                                            Text(
+                                                text = "$percent% Match",
+                                                fontSize = 12.sp,
+                                                color = if (percent > 70) FoundColor else TextSecondary
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -202,6 +202,32 @@ async function markAsClaimed(req, res) {
   }
 }
 
+// ── Get similar items ──────────────────────────
+async function getSimilarItems(req, res) {
+  try {
+    const itemId = parseInt(req.params.id);
+
+    const existing = await prisma.item.findUnique({ where: { id: itemId } });
+    if (!existing) return res.status(404).json({ error: "Item not found" });
+
+    // Find similar items of the opposite status (e.g. if LOST, find FOUND)
+    const searchAgainst = existing.status === "FOUND" ? "LOST" : "FOUND";
+    
+    // We try to find items similar by image first (if available), then by text
+    let matches = [];
+    try {
+      matches = await findSimilarItems(itemId, searchAgainst, "text");
+    } catch (err) {
+      console.error("Vector search failed:", err.message);
+    }
+
+    res.json({ matches });
+  } catch (error) {
+    console.error("Get similar items error:", error.message);
+    res.status(500).json({ error: "Failed to fetch similar items" });
+  }
+}
+
 module.exports = {
   createItem,
   getAllItems,
@@ -209,4 +235,5 @@ module.exports = {
   updateItem,
   deleteItem,
   markAsClaimed,
+  getSimilarItems,
 };

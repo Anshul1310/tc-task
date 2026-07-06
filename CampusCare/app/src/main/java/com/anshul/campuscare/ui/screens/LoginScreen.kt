@@ -192,7 +192,7 @@ fun LoginWebView(
                             onLoadingChanged(false)
 
                             // Check if we've reached the callback URL
-                            if (url != null && url.startsWith(callbackUrlPrefix)) {
+                            if (url != null && url.contains("/auth/callback") && url.contains("code=")) {
                                 // The server has set the session cookie.
                                 // Extract it from the WebView and add it
                                 // to our OkHttp cookie jar.
@@ -205,7 +205,26 @@ fun LoginWebView(
                             view: WebView?,
                             request: WebResourceRequest?
                         ): Boolean {
-                            // Let the WebView handle all redirects
+                            val urlString = request?.url?.toString() ?: ""
+
+                            // Check if DAuth is redirecting us back to the callback URL
+                            if (urlString.contains("/auth/callback") && urlString.contains("code=")) {
+                                // If the redirect is already pointing to our BASE_URL, let it proceed
+                                if (urlString.startsWith(ApiClient.BASE_URL)) {
+                                    return false
+                                }
+
+                                // Otherwise (e.g., if it redirected to localhost which fails on the emulator),
+                                // rewrite the URL to use our correct backend BASE_URL and load it manually.
+                                val uri = request?.url
+                                val query = uri?.query
+                                val newUrl = ApiClient.BASE_URL + "auth/callback" + if (query != null) "?$query" else ""
+
+                                view?.loadUrl(newUrl)
+                                return true
+                            }
+
+                            // Let the WebView handle all other redirects
                             return false
                         }
                     }

@@ -22,6 +22,7 @@ const { uploadImages } = require("../middleware/uploadMiddleware");
 // Public routes
 router.get("/", itemController.getAllItems);
 router.get("/:id", itemController.getItemById);
+router.get("/:id/similar", itemController.getSimilarItems);
 
 // Protected routes (must be logged in)
 router.post("/", requireAuth, uploadImages, itemController.createItem);
