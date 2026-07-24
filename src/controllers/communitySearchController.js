@@ -18,22 +18,6 @@ async function textSearch(req, res) {
   }
 }
 
-async function imageSearch(req, res) {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "Image file is required" });
-    }
-
-    const imagePath = "uploads/" + req.file.filename;
-    const matches = await findSimilarDiscussions(null, null, imagePath, 10);
-
-    return res.json({ matches: matches });
-  } catch (error) {
-    console.error("Image search error:", error.message);
-    return res.status(500).json({ error: "Image search failed" });
-  }
-}
-
 async function ragSearch(req, res) {
   try {
     let query = req.body.query;
@@ -237,6 +221,5 @@ async function ragSearch(req, res) {
 
 module.exports = {
   textSearch,
-  imageSearch,
   ragSearch
 };

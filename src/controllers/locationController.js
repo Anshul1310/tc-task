@@ -1,10 +1,3 @@
-// ──────────────────────────────────────────────
-// Location Controller
-//
-// Uses OpenCage Geocoding API to convert latitude
-// and longitude into a high-precision address
-// (prioritizing hostel name, building, amenity, sub-locality).
-// ──────────────────────────────────────────────
 
 const axios = require("axios");
 
@@ -13,7 +6,7 @@ function formatPreciseAddress(result) {
 
   const components = result.components || {};
 
-  // High-precision components (hostel, building, amenity, specific spot)
+
   const specificSpot =
     components.building ||
     components.hostel ||
@@ -39,7 +32,6 @@ function formatPreciseAddress(result) {
     return specificSpot;
   }
 
-  // Fallback to formatted string
   return result.formatted;
 }
 

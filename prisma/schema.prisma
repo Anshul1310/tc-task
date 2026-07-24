@@ -1,7 +1,3 @@
-// ──────────────────────────────────────────────
-// Prisma Schema for CampusCare
-// ──────────────────────────────────────────────
-
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
@@ -13,9 +9,6 @@ datasource db {
   extensions = [vector]
 }
 
-// ──────────────────────────────────────────────
-// User — created when someone logs in via DAuth
-// ──────────────────────────────────────────────
 model User {
   id                Int      @id @default(autoincrement())
   email             String   @unique
@@ -24,82 +17,48 @@ model User {
   avatarColor       String?
   createdAt         DateTime @default(now())
 
-  discussions   Discussion[]
-  comments      Comment[]
-  replies       Reply[]
-  upvotes       Upvote[]
+  discussions Discussion[]
+  comments    Comment[]
+  upvotes     Upvote[]
 }
-
-// ──────────────────────────────────────────────
-// Community Discussion Module
-// ──────────────────────────────────────────────
 
 model Discussion {
   id           Int      @id @default(autoincrement())
   title        String
   description  String
-  images       String[] // e.g. ["uploads/abc.jpg"]
-  
-  // Optional location
+  images       String[]
   latitude     Float?
   longitude    Float?
   buildingName String?
-
   upvoteCount  Int      @default(0)
-  
-  // Relations
-  userId       Int
-  createdBy    User     @relation(fields: [userId], references: [id])
-  
-  comments     Comment[]
-  upvotes      Upvote[]
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  userId    Int
+  createdBy User @relation(fields: [userId], references: [id])
+
+  comments Comment[]
+  upvotes  Upvote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Comment {
-  id           Int      @id @default(autoincrement())
+  id           Int        @id @default(autoincrement())
   text         String
-  image        String?  // Optional single image
-
-  // Relations
   userId       Int
-  author       User     @relation(fields: [userId], references: [id])
-  
+  author       User       @relation(fields: [userId], references: [id])
   discussionId Int
   discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
-  
-  replies      Reply[]
-
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
 }
 
-model Reply {
-  id           Int      @id @default(autoincrement())
-  text         String
-
-  // Relations
-  userId       Int
-  author       User     @relation(fields: [userId], references: [id])
-
-  commentId    Int
-  comment      Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
-
-  createdAt    DateTime @default(now())
-}
-
-// Join table to track who upvoted what
 model Upvote {
-  id           Int      @id @default(autoincrement())
-  
+  id           Int        @id @default(autoincrement())
   userId       Int
-  user         User     @relation(fields: [userId], references: [id])
-
+  user         User       @relation(fields: [userId], references: [id])
   discussionId Int
   discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
 
-  createdAt    DateTime @default(now())
-
-  @@unique([userId, discussionId]) // A user can only upvote a discussion once
+  @@unique([userId, discussionId])
 }
