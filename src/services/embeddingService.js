@@ -1,85 +1,90 @@
 // ──────────────────────────────────────────────
-// Embedding Service (Local Inference)
+// Embedding & Vector Service Client
 //
-// Generates text and image embeddings using
-// local models via Xenova/transformers.js.
-// No external API calls are made.
-//
-// Models used:
-//   Text:  Xenova/all-MiniLM-L6-v2  → 384-dim vectors
-//   Image: Xenova/clip-vit-base-patch32 → 512-dim vectors
+// Communicates with the Python sidecar server over HTTP.
+// The Python sidecar manages FastEmbed (ONNX) and
+// ChromaDB (persistent vector storage in python-embeddings/chroma_db/).
 // ──────────────────────────────────────────────
 
+const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const FormData = require("form-data");
 
-const TEXT_MODEL = "Xenova/all-MiniLM-L6-v2";
-const IMAGE_MODEL = "Xenova/clip-vit-base-patch32";
+const EMBEDDING_URL = process.env.EMBEDDING_SERVICE_URL || "http://localhost:5050";
 
-// Singletons for pipelines
-let textPipelinePromise = null;
-let imagePipelinePromise = null;
-
-// Dynamically import transformers to avoid top-level await issues
-// in CommonJS modules if necessary, but requires() works natively in node
-async function getPipeline() {
-  const { pipeline, env } = await import('@xenova/transformers');
-  // Optional: Set cache directory if needed
-  // env.cacheDir = path.join(__dirname, '../../.cache');
-  return pipeline;
+// Helper to resolve image paths stored in database/uploads
+function getAbsolutePath(imagePath) {
+  if (!imagePath) return null;
+  return path.join(__dirname, "../", imagePath);
 }
 
-async function getTextExtractor() {
-  if (!textPipelinePromise) {
-    console.log(`[Embeddings] Loading local text model: ${TEXT_MODEL}`);
-    textPipelinePromise = getPipeline().then(pipeline => 
-      pipeline("feature-extraction", TEXT_MODEL)
-    );
-  }
-  return textPipelinePromise;
-}
-
-async function getImageExtractor() {
-  if (!imagePipelinePromise) {
-    console.log(`[Embeddings] Loading local image model: ${IMAGE_MODEL}`);
-    imagePipelinePromise = getPipeline().then(pipeline => 
-      pipeline("image-feature-extraction", IMAGE_MODEL)
-    );
-  }
-  return imagePipelinePromise;
-}
-
-// ── Text Embedding ────────────────────────────
-// Generates a 384-dimensional float array natively.
-async function getTextEmbedding(text) {
+// ── Index a Discussion in ChromaDB ────────────
+async function indexDiscussion(discussionId, title, description, imagePath) {
   try {
-    const extractor = await getTextExtractor();
-    const output = await extractor(text, { pooling: "mean", normalize: true });
-    // output.data is a Float32Array
-    return Array.from(output.data);
+    const form = new FormData();
+    form.append("discussion_id", String(discussionId));
+    form.append("title", title);
+    form.append("description", description);
+
+    if (imagePath) {
+      const absolutePath = getAbsolutePath(imagePath);
+      if (fs.existsSync(absolutePath)) {
+        form.append("file", fs.createReadStream(absolutePath));
+      }
+    }
+
+    const response = await axios.post(`${EMBEDDING_URL}/discussions/index`, form, {
+      headers: form.getHeaders(),
+    });
+
+    return response.data;
   } catch (error) {
-    console.error("Text embedding error:", error.message);
-    throw new Error("Failed to generate local text embedding");
+    console.error("Index discussion error:", error.message);
+    // Non-blocking: fail gracefully if Python server fails
+    return null;
   }
 }
 
-// ── Image Embedding ───────────────────────────
-// Generates a 512-dimensional float array natively.
-async function getImageEmbedding(imagePath) {
+// ── Find Similar Discussions via ChromaDB ────
+async function findSimilarDiscussions(title, description, imagePath, limit = 5) {
   try {
-    const extractor = await getImageExtractor();
-    
-    // Convert relative/absolute paths to proper file:// URLs if needed,
-    // though Transformers.js usually handles absolute paths fine.
-    const output = await extractor(imagePath);
-    return Array.from(output.data);
+    const form = new FormData();
+    if (title) form.append("title", title);
+    if (description) form.append("description", description);
+    form.append("limit", String(limit));
+
+    if (imagePath) {
+      const absolutePath = getAbsolutePath(imagePath);
+      if (fs.existsSync(absolutePath)) {
+        form.append("file", fs.createReadStream(absolutePath));
+      }
+    }
+
+    const response = await axios.post(`${EMBEDDING_URL}/discussions/find_similar`, form, {
+      headers: form.getHeaders(),
+    });
+
+    return response.data.matches || [];
   } catch (error) {
-    console.error("Image embedding error:", error.message);
-    throw new Error("Failed to generate local image embedding");
+    console.error("Find similar discussions error:", error.message);
+    return [];
+  }
+}
+
+// ── Delete Vector from ChromaDB ───────────────
+async function deleteDiscussionVector(discussionId) {
+  try {
+    const response = await axios.delete(`${EMBEDDING_URL}/discussions/${discussionId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Delete discussion vector error:", error.message);
+    return null;
   }
 }
 
 module.exports = {
-  getTextEmbedding,
-  getImageEmbedding,
+  indexDiscussion,
+  findSimilarDiscussions,
+  deleteDiscussionVector,
 };

@@ -41,10 +41,16 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         Result.failure(e)
     }
 
-    suspend fun getDiscussionById(id: Int): Result<Discussion> = try {
+    suspend fun getDiscussionById(id: Int): Result<DiscussionDetails> = try {
         val response = apiService.getDiscussionById(id)
         if (response.isSuccessful && response.body() != null) {
-            Result.success(response.body()!!.discussion)
+            val body = response.body()!!
+            Result.success(
+                DiscussionDetails(
+                    discussion = body.discussion,
+                    relatedDiscussions = body.relatedDiscussions ?: emptyList()
+                )
+            )
         } else {
             Result.failure(Exception("Failed to load discussion: ${response.code()}"))
         }
@@ -142,26 +148,13 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         Result.failure(e)
     }
 
-    suspend fun getNotifications(): Result<List<Notification>> = try {
-        val response = apiService.getNotifications()
+    suspend fun reverseGeocode(latitude: Double, longitude: Double): String? = try {
+        val response = apiService.reverseGeocode(latitude = latitude, longitude = longitude)
         if (response.isSuccessful && response.body() != null) {
-            Result.success(response.body()!!.notifications)
-        } else {
-            Result.failure(Exception("Failed to load notifications: ${response.code()}"))
-        }
+            response.body()!!.address
+        } else null
     } catch (e: Exception) {
-        Result.failure(e)
-    }
-
-    suspend fun markNotificationAsRead(notificationId: Int): Result<Unit> = try {
-        val response = apiService.markNotificationAsRead(notificationId)
-        if (response.isSuccessful) {
-            Result.success(Unit)
-        } else {
-            Result.failure(Exception("Failed to mark notification as read: ${response.code()}"))
-        }
-    } catch (e: Exception) {
-        Result.failure(e)
+        null
     }
 
     suspend fun searchDiscussionsByText(query: String): Result<List<DiscussionMatch>> = try {

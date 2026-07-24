@@ -53,20 +53,16 @@ app.get("/health", (req, res) => {
 // ── Routes ────────────────────────────────────
 
 const authRoutes = require("./routes/authRoutes");
-const itemRoutes = require("./routes/itemRoutes");
-const searchRoutes = require("./routes/searchRoutes");
 const discussionRoutes = require("./routes/discussionRoutes");
 const commentRoutes = require("./routes/commentRoutes");
-const notificationRoutes = require("./routes/notificationRoutes");
 const communitySearchRoutes = require("./routes/communitySearchRoutes");
+const locationRoutes = require("./routes/locationRoutes");
 
 app.use("/auth", authRoutes);
-app.use("/items", itemRoutes);
-app.use("/search", searchRoutes);
 app.use("/discussions", discussionRoutes);
 app.use("/", commentRoutes);
-app.use("/notifications", notificationRoutes);
 app.use("/community", communitySearchRoutes);
+app.use("/location", locationRoutes);
 
 // ── Error Handler ─────────────────────────────
 // Catches any unhandled errors from routes/middleware

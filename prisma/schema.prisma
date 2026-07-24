@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Prisma Schema for Campus Lost & Found
+// Prisma Schema for CampusCare
 // ──────────────────────────────────────────────
 
 generator client {
@@ -24,47 +24,10 @@ model User {
   avatarColor       String?
   createdAt         DateTime @default(now())
 
-  items         Item[]
   discussions   Discussion[]
   comments      Comment[]
   replies       Reply[]
   upvotes       Upvote[]
-  notifications Notification[]
-}
-
-// ──────────────────────────────────────────────
-// Item — a lost or found item reported by a user
-//
-// NOTE: textEmbedding and imageEmbedding columns
-// are NOT here because Prisma has no Vector type.
-// We add them via raw SQL after migration. See the
-// migration SQL in prisma/migrations/ folder.
-// ──────────────────────────────────────────────
-model Item {
-  id              Int      @id @default(autoincrement())
-  title           String
-  description     String
-  category        String
-  location        String
-  dateLostOrFound DateTime
-  status          Status   @default(LOST)
-  images          String[] // File paths like ["uploads/abc123.jpg"]
-
-  userId Int
-  user   User @relation(fields: [userId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ──────────────────────────────────────────────
-// Status — tracks whether an item is lost, found,
-// or has been claimed by its owner
-// ──────────────────────────────────────────────
-enum Status {
-  LOST
-  FOUND
-  CLAIMED
 }
 
 // ──────────────────────────────────────────────
@@ -90,7 +53,6 @@ model Discussion {
   
   comments     Comment[]
   upvotes      Upvote[]
-  notifications Notification[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -109,7 +71,6 @@ model Comment {
   discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
   
   replies      Reply[]
-  notifications Notification[]
 
   createdAt    DateTime @default(now())
 }
@@ -141,24 +102,4 @@ model Upvote {
   createdAt    DateTime @default(now())
 
   @@unique([userId, discussionId]) // A user can only upvote a discussion once
-}
-
-model Notification {
-  id           Int      @id @default(autoincrement())
-  type         String   // e.g., "COMMENT", "REPLY", "UPVOTE"
-  title        String
-  message      String
-  isRead       Boolean  @default(false)
-
-  // Relations
-  receiverId   Int
-  receiver     User     @relation(fields: [receiverId], references: [id])
-
-  discussionId Int?
-  discussion   Discussion? @relation(fields: [discussionId], references: [id], onDelete: Cascade)
-
-  commentId    Int?
-  comment      Comment?    @relation(fields: [commentId], references: [id], onDelete: Cascade)
-
-  createdAt    DateTime @default(now())
 }

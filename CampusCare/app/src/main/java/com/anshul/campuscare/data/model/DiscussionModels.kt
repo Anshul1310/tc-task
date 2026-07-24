@@ -44,15 +44,8 @@ data class Reply(
     val author: DiscussionAuthor?
 )
 
-data class Notification(
-    val id: Int,
-    val type: String,
-    val title: String,
-    val message: String,
-    val isRead: Boolean,
-    val createdAt: String,
-    val discussionId: Int?,
-    val commentId: Int?
+data class AddressResponse(
+    val address: String
 )
 
 // API Responses
@@ -61,7 +54,13 @@ data class DiscussionsResponse(
 )
 
 data class SingleDiscussionResponse(
-    val discussion: Discussion
+    val discussion: Discussion,
+    val relatedDiscussions: List<Discussion>? = null
+)
+
+data class DiscussionDetails(
+    val discussion: Discussion,
+    val relatedDiscussions: List<Discussion> = emptyList()
 )
 
 data class CommentResponse(
@@ -70,10 +69,6 @@ data class CommentResponse(
 
 data class ReplyResponse(
     val reply: Reply
-)
-
-data class NotificationsResponse(
-    val notifications: List<Notification>
 )
 
 data class DuplicateResponse(

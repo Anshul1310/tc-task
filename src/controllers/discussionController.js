@@ -1,39 +1,25 @@
+const axios = require("axios");
 const prisma = require("../config/db");
-const { getTextEmbedding, getImageEmbedding } = require("../services/embeddingService");
-const { findSimilarDiscussions } = require("../prisma/vectors");
+const { indexDiscussion, findSimilarDiscussions } = require("../services/embeddingService");
 
-const DUPLICATE_THRESHOLD = 0.90;
+const DUPLICATE_THRESHOLD = 0.85;
 
-// Helper to asynchronously update vector embeddings using raw SQL
-async function storeDiscussionEmbeddings(discussionId, textEmbedding, imageEmbedding) {
+const { formatPreciseAddress } = require("./locationController");
+
+// Helper: OpenCage reverse geocoding on the server
+async function fetchAddressFromOpenCage(lat, lng) {
   try {
-    if (textEmbedding && imageEmbedding) {
-      const textVector = `[${textEmbedding.join(",")}]`;
-      const imageVector = `[${imageEmbedding.join(",")}]`;
-      await prisma.$executeRawUnsafe(
-        `UPDATE "Discussion" SET "textEmbedding" = $1::vector, "imageEmbedding" = $2::vector WHERE id = $3`,
-        textVector,
-        imageVector,
-        discussionId
-      );
-    } else if (textEmbedding) {
-      const textVector = `[${textEmbedding.join(",")}]`;
-      await prisma.$executeRawUnsafe(
-        `UPDATE "Discussion" SET "textEmbedding" = $1::vector WHERE id = $2`,
-        textVector,
-        discussionId
-      );
-    } else if (imageEmbedding) {
-      const imageVector = `[${imageEmbedding.join(",")}]`;
-      await prisma.$executeRawUnsafe(
-        `UPDATE "Discussion" SET "imageEmbedding" = $1::vector WHERE id = $2`,
-        imageVector,
-        discussionId
-      );
+    const apiKey = process.env.OPENCAGE_API_KEY || "40c5f2b87f944bd0a563ee25eb7b3726";
+    const url = `https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lng}&key=${apiKey}&no_annotations=1&limit=1`;
+    const response = await axios.get(url);
+    const results = response.data?.results;
+    if (results && results.length > 0) {
+      return formatPreciseAddress(results[0]);
     }
-  } catch (error) {
-    console.error("Failed to store discussion embeddings:", error.message);
+  } catch (err) {
+    console.error("Server-side OpenCage reverse geocode error:", err.message);
   }
+  return null;
 }
 
 async function createDiscussion(req, res) {
@@ -41,29 +27,21 @@ async function createDiscussion(req, res) {
     const { title, description, latitude, longitude, buildingName, createAnyway } = req.body;
     
     const images = req.files ? req.files.map((file) => `uploads/${file.filename}`) : [];
-    const textInput = `${title}. ${description}`;
-    
-    // Generate embeddings
-    let textEmbedding = null;
-    let imageEmbedding = null;
-    
-    try {
-      textEmbedding = await getTextEmbedding(textInput);
-    } catch (err) {
-      console.error("Text embedding failed:", err.message);
-    }
 
-    if (images.length > 0) {
-      try {
-        imageEmbedding = await getImageEmbedding(images[0]);
-      } catch (err) {
-        console.error("Image embedding failed:", err.message);
+    let finalBuildingName = buildingName || null;
+    const parsedLat = latitude ? parseFloat(latitude) : null;
+    const parsedLng = longitude ? parseFloat(longitude) : null;
+
+    if (!finalBuildingName && parsedLat !== null && parsedLng !== null) {
+      const address = await fetchAddressFromOpenCage(parsedLat, parsedLng);
+      if (address) {
+        finalBuildingName = address;
       }
     }
 
-    // Duplicate Detection
+    // Duplicate Detection via ChromaDB
     if (String(createAnyway) !== "true") {
-      const matches = await findSimilarDiscussions(textEmbedding, imageEmbedding, 1);
+      const matches = await findSimilarDiscussions(title, description, images[0] || null, 1);
       if (matches.length > 0 && matches[0].similarity > DUPLICATE_THRESHOLD) {
         // Find the matched discussion details
         const matchedDiscussion = await prisma.discussion.findUnique({
@@ -71,24 +49,26 @@ async function createDiscussion(req, res) {
           include: { createdBy: { select: { anonymousUsername: true, avatarColor: true } } }
         });
 
-        return res.status(409).json({
-          duplicate: true,
-          matchedDiscussion,
-          similarity: matches[0].similarity,
-          message: "We found an existing discussion that looks similar."
-        });
+        if (matchedDiscussion) {
+          return res.status(409).json({
+            duplicate: true,
+            matchedDiscussion,
+            similarity: matches[0].similarity,
+            message: "We found an existing discussion that looks similar."
+          });
+        }
       }
     }
 
-    // Create the discussion
+    // Create the discussion in database
     const discussion = await prisma.discussion.create({
       data: {
         title,
         description,
         images,
-        latitude: latitude ? parseFloat(latitude) : null,
-        longitude: longitude ? parseFloat(longitude) : null,
-        buildingName,
+        latitude: parsedLat,
+        longitude: parsedLng,
+        buildingName: finalBuildingName,
         userId: req.user.id,
       },
       include: {
@@ -96,8 +76,8 @@ async function createDiscussion(req, res) {
       }
     });
 
-    // Store embeddings asynchronously
-    storeDiscussionEmbeddings(discussion.id, textEmbedding, imageEmbedding);
+    // Index discussion in ChromaDB (persistent vector storage in Python sidecar)
+    indexDiscussion(discussion.id, title, description, images[0] || null);
 
     res.status(201).json({ discussion });
   } catch (error) {
@@ -187,7 +167,43 @@ async function getDiscussionById(req, res) {
     };
     delete response.upvotes;
 
-    res.json({ discussion: response });
+    // Fetch related discussions via ChromaDB vector similarity
+    let relatedDiscussions = [];
+    try {
+      const matches = await findSimilarDiscussions(
+        discussion.title,
+        discussion.description,
+        discussion.images.length > 0 ? discussion.images[0] : null,
+        6
+      );
+
+      const relatedIds = matches
+        .filter((m) => m.discussionId !== id)
+        .map((m) => m.discussionId);
+
+      if (relatedIds.length > 0) {
+        const relatedFromDb = await prisma.discussion.findMany({
+          where: { id: { in: relatedIds } },
+          include: {
+            createdBy: { select: { id: true, anonymousUsername: true, avatarColor: true } },
+            _count: { select: { comments: true } }
+          }
+        });
+
+        const similarityMap = new Map(matches.map((m) => [m.discussionId, m.similarity]));
+
+        relatedDiscussions = relatedFromDb
+          .map((d) => ({
+            ...d,
+            similarity: similarityMap.get(d.id) || 0
+          }))
+          .sort((a, b) => b.similarity - a.similarity);
+      }
+    } catch (relErr) {
+      console.error("Failed to fetch related discussions:", relErr.message);
+    }
+
+    res.json({ discussion: response, relatedDiscussions });
   } catch (error) {
     console.error("Get discussion error:", error.message);
     res.status(500).json({ error: "Failed to fetch discussion" });

@@ -1,7 +1,7 @@
 {
-  "name": "campus-lost-and-found",
+  "name": "campuscare-backend",
   "version": "1.0.0",
-  "description": "Campus Lost & Found System with AI-powered similarity matching",
+  "description": "CampusCare Backend - Campus Community Discussion Platform",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -11,8 +11,9 @@
     "prisma:studio": "npx prisma studio"
   },
   "keywords": [
-    "lost-and-found",
     "campus",
+    "community",
+    "discussions",
     "pgvector",
     "embeddings"
   ],
@@ -20,12 +21,12 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "@xenova/transformers": "^2.17.2",
     "axios": "^1.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.21.0",
     "express-session": "^1.18.0",
+    "form-data": "^4.0.6",
     "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {

@@ -10,7 +10,7 @@ package com.anshul.campuscare.ui.screens
 //   3. User enters credentials on DAuth
 //   4. DAuth redirects back to {BASE_URL}/auth/callback
 //   5. The server creates a session and returns a cookie
-//   6. We capture that cookie and use it for future API calls
+//   6. We capture that cookie and save it to SharedPreferences
 // ──────────────────────────────────────────────
 
 import android.graphics.Bitmap
@@ -48,8 +48,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.anshul.campuscare.data.network.ApiClient
 import com.anshul.campuscare.ui.theme.TextSecondary
-import okhttp3.Cookie
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 @Composable
 fun LoginScreen(
@@ -84,7 +82,7 @@ fun LoginScreen(
         ) {
             // App Icon
             Text(
-                text = "🔍",
+                text = "💬",
                 fontSize = 72.sp
             )
 
@@ -102,7 +100,7 @@ fun LoginScreen(
 
             // Subtitle
             Text(
-                text = "Lost & Found for NIT Trichy",
+                text = "Campus Community Discussion Platform",
                 fontSize = 16.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -145,11 +143,6 @@ fun LoginScreen(
 
 // ──────────────────────────────────────────────
 // Login WebView
-//
-// An Android WebView that handles the DAuth OAuth flow.
-// It loads the login URL, follows redirects through DAuth,
-// and when the callback URL is reached, extracts the
-// session cookie and passes it to the OkHttp cookie jar.
 // ──────────────────────────────────────────────
 
 @Composable
@@ -193,10 +186,7 @@ fun LoginWebView(
 
                             // Check if we've reached the callback URL
                             if (url != null && url.contains("/auth/callback") && url.contains("code=")) {
-                                // The server has set the session cookie.
-                                // Extract it from the WebView and add it
-                                // to our OkHttp cookie jar.
-                                transferCookiesToOkHttp(url = url)
+                                transferCookiesToSession(url = url)
                                 onLoginComplete()
                             }
                         }
@@ -209,13 +199,10 @@ fun LoginWebView(
 
                             // Check if DAuth is redirecting us back to the callback URL
                             if (urlString.contains("/auth/callback") && urlString.contains("code=")) {
-                                // If the redirect is already pointing to our BASE_URL, let it proceed
                                 if (urlString.startsWith(ApiClient.BASE_URL)) {
                                     return false
                                 }
 
-                                // Otherwise (e.g., if it redirected to localhost which fails on the emulator),
-                                // rewrite the URL to use our correct backend BASE_URL and load it manually.
                                 val uri = request?.url
                                 val query = uri?.query
                                 val newUrl = ApiClient.BASE_URL + "auth/callback" + if (query != null) "?$query" else ""
@@ -224,7 +211,6 @@ fun LoginWebView(
                                 return true
                             }
 
-                            // Let the WebView handle all other redirects
                             return false
                         }
                     }
@@ -236,7 +222,6 @@ fun LoginWebView(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Loading indicator on top of the WebView
         if (isPageLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -252,30 +237,22 @@ fun LoginWebView(
 }
 
 /**
- * Transfers cookies from the Android WebView's CookieManager
- * to the OkHttp CookieJar so that Retrofit can use them.
- *
- * The key cookie we need is "connect.sid" — the Express session cookie.
+ * Saves the session cookie from WebView's CookieManager to ApiClient.
  */
-private fun transferCookiesToOkHttp(url: String) {
+private fun transferCookiesToSession(url: String) {
     val cookieManager: CookieManager = CookieManager.getInstance()
     val cookieString: String? = cookieManager.getCookie(url)
 
-    if (cookieString != null) {
-        val httpUrl = url.toHttpUrlOrNull()
-        if (httpUrl != null) {
-            // The cookie string is like "connect.sid=abc123; Path=/; HttpOnly"
-            val cookieParts: List<String> = cookieString.split(";")
-            for (part: String in cookieParts) {
-                val trimmedPart: String = part.trim()
-                val cookie: Cookie? = Cookie.parse(httpUrl, trimmedPart)
-                if (cookie != null) {
-                    ApiClient.cookieJar.addCookie(
-                        url = httpUrl,
-                        cookie = cookie
-                    )
-                }
+    if (!cookieString.isNullOrEmpty()) {
+        val parts = cookieString.split(";")
+        for (part in parts) {
+            val trimmed = part.trim()
+            if (trimmed.startsWith("connect.sid=")) {
+                ApiClient.saveSessionCookie(trimmed)
+                return
             }
         }
+        // Fallback: save first cookie part
+        ApiClient.saveSessionCookie(cookieString.split(";")[0].trim())
     }
 }

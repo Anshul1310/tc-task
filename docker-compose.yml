@@ -1,14 +1,15 @@
 # ──────────────────────────────────────────────
 # Docker Compose
 #
-# Starts two services:
-#   1. db   — PostgreSQL with pgvector extension
-#   2. app  — Node.js backend
+# Starts three services:
+#   1. db         — PostgreSQL with pgvector extension
+#   2. embeddings — Python FastEmbed server (ONNX)
+#   3. app        — Node.js backend
 #
 # Usage:
-#   docker compose up        (start both)
+#   docker compose up        (start all)
 #   docker compose up -d     (start in background)
-#   docker compose down      (stop both)
+#   docker compose down      (stop all)
 #   docker compose logs app  (view backend logs)
 # ──────────────────────────────────────────────
 
@@ -17,12 +18,12 @@ services:
   db:
     # pgvector/pgvector:pg17 comes with pgvector pre-installed
     image: pgvector/pgvector:pg17
-    container_name: lostandfound-db
+    container_name: campuscare-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 14dc
-      POSTGRES_DB: lostandfound
+      POSTGRES_DB: campuscare
     ports:
       - "5433:5432"
     volumes:
@@ -36,9 +37,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Python Embedding Server ────────────────
+  embeddings:
+    container_name: campuscare-embeddings
+    build:
+      context: ./python-embeddings
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    volumes:
+      # Share uploads directory so embeddings server can read images
+      - ./src/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5050/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ── Node.js Backend ────────────────────────
   app:
-    container_name: lostandfound-app
+    container_name: campuscare-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -48,17 +67,19 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: development
-      DATABASE_URL: postgresql://postgres:password@db:5432/lostandfound?schema=public
+      DATABASE_URL: postgresql://postgres:password@db:5432/campuscare?schema=public
+      EMBEDDING_SERVICE_URL: http://embeddings:5050
       DAUTH_CLIENT_ID: ${DAUTH_CLIENT_ID}
       DAUTH_CLIENT_SECRET: ${DAUTH_CLIENT_SECRET}
       DAUTH_REDIRECT_URI: ${DAUTH_REDIRECT_URI}
-      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
       SESSION_SECRET: ${SESSION_SECRET}
     volumes:
       # Persist uploaded images
       - ./src/uploads:/app/src/uploads
     depends_on:
       db:
+        condition: service_healthy
+      embeddings:
         condition: service_healthy
 
 volumes:
