@@ -36,9 +36,9 @@ async function imageSearch(req, res) {
 }
 
 /**
- * RAG Search: Retrieves matching posts (with lowered similarity threshold >= 0.55),
- * and uses Google Gemini to explain the titles, descriptions, and comments
- * like a warm, supportive teacher/mentor guiding a student.
+ * RAG Search: Combines Gemini 1.5 Pro's domain & academic knowledge
+ * with retrieved campus posts, titles, descriptions, and comments.
+ * Generates rich mentor/advisory text guiding the student.
  */
 async function ragSearch(req, res) {
   try {
@@ -48,13 +48,11 @@ async function ragSearch(req, res) {
       return res.status(400).json({ error: "Search query is required" });
     }
 
-    // Lowered similarity threshold (55%) to capture broader relevant discussions
     const SIMILARITY_THRESHOLD = 0.55;
 
     // 1. Vector Search in ChromaDB
     const vectorMatches = await findSimilarDiscussions(query.trim(), null, null, 10);
 
-    // Filter matching posts (threshold 55%, fallback to top 3 if none reach 55%)
     let topMatches = vectorMatches.filter((m) => m.similarity >= SIMILARITY_THRESHOLD);
     if (topMatches.length === 0 && vectorMatches.length > 0) {
       topMatches = vectorMatches.slice(0, 3);
@@ -91,16 +89,16 @@ async function ragSearch(req, res) {
         .sort((a, b) => b.similarity - a.similarity);
     }
 
-    // 3. Build RAG Context (Post Titles + Descriptions + Comment Threads)
+    // 3. Build RAG Context String
     let contextText = "";
     if (discussions.length > 0) {
       discussions.forEach((d, idx) => {
-        contextText += `\n[Campus Discussion #${idx + 1} - Match Relevance: ${(d.similarity * 100).toFixed(0)}%]\n`;
+        contextText += `\n[Campus Discussion #${idx + 1}]\n`;
         contextText += `Title: ${d.title}\n`;
-        if (d.buildingName) contextText += `Location/Spot: ${d.buildingName}\n`;
+        if (d.buildingName) contextText += `Location/Department: ${d.buildingName}\n`;
         contextText += `Post Description: ${d.description}\n`;
         if (d.comments && d.comments.length > 0) {
-          contextText += `Student Comments & Discussion Updates:\n`;
+          contextText += `Student Comments & Feedback:\n`;
           d.comments.forEach((c) => {
             contextText += `  - ${c.author?.anonymousUsername || "Student"}: "${c.text}"\n`;
             if (c.replies) {
@@ -109,54 +107,63 @@ async function ragSearch(req, res) {
               });
             }
           });
-        } else {
-          contextText += `Comments: No comments posted yet.\n`;
         }
       });
     }
 
-    // 4. Generate Teacher/Mentor Explanation using Google Gemini API
+    // 4. Generate Rich Mentor Advice using Gemini 1.5 Pro (with Gemini 2.5 Flash fallback)
     const apiKey = process.env.GEMINI_API_KEY;
     let aiAnswer = "";
 
-    if (discussions.length === 0) {
-      aiAnswer = `Hello there! I reviewed our campus discussion records, but couldn't find any existing posts related to "${query}". Feel free to create a new discussion topic so fellow students and staff can assist you!`;
-    } else if (apiKey && contextText.length > 0) {
-      const prompt = `You are a warm, supportive, and wise campus Mentor & Teacher at NIT Trichy.
-A student came to you asking for guidance on: "${query}"
+    if (apiKey) {
+      const prompt = `You are a wise, supportive, and experienced Academic & Campus Mentor at NIT Trichy.
+A student came to you asking for advice on: "${query}"
 
-Here is the campus community data (post titles, descriptions, locations, and student comments) retrieved from the platform:
-${contextText}
+Here is the campus community data (post titles, descriptions, locations, and student comments) retrieved from our database:
+${contextText.length > 0 ? contextText : "No specific posts retrieved, use your domain knowledge."}
 
-Instructions for your Teacher/Mentor response:
-1. Adopt a warm, encouraging, and clear teaching tone (e.g. "Hello! Let me break down what our campus community has reported...").
-2. Answer the student's question thoroughly using the post titles, descriptions, and comments as your dataset.
-3. Clearly explain what the posts describe and what the student comments reveal (including any recent updates, fixes, or solutions).
-4. Provide actionable, supportive advice on what the student should do next based on this campus data.`;
+Instructions for your Mentor response:
+1. Combine your OWN vast domain knowledge (about NIT Trichy, academic branches, career scope, campus life, and student advice) TOGETHER with the retrieved campus posts and comments.
+2. Give a clear, encouraging recommendation (for example: "Based on campus feedback and academic scope, you can comfortably opt for this branch since everything I found from student reviews is positive, but still keep in mind...").
+3. Break down key takeaways from the post titles, descriptions, and comments, while adding your own mentor insights.
+4. Speak warmly, intelligently, and inspiringly like a real mentor guiding a student toward their best decision.`;
 
-      try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-        const geminiRes = await axios.post(geminiUrl, {
-          contents: [{ parts: [{ text: prompt }] }]
-        });
+      // Try Gemini 1.5 Pro first (Reasoning & Domain Knowledge Model)
+      const modelsToTry = [
+        "gemini-1.5-pro",
+        "gemini-2.5-flash",
+        "gemini-1.5-flash"
+      ];
 
-        aiAnswer = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      } catch (geminiErr) {
-        console.error("Gemini RAG API call error:", geminiErr.message);
+      for (const modelName of modelsToTry) {
+        try {
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+          const geminiRes = await axios.post(geminiUrl, {
+            contents: [{ parts: [{ text: prompt }] }]
+          });
+
+          const responseText = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (responseText) {
+            aiAnswer = responseText;
+            break; // Success!
+          }
+        } catch (err) {
+          console.error(`Gemini model ${modelName} call failed:`, err.message);
+        }
       }
     }
 
-    // Fallback Teacher synthesis if Gemini API key is missing or call fails
+    // Fallback Teacher synthesis if Gemini API key is missing or calls fail
     if (!aiAnswer && discussions.length > 0) {
       const topMatchesSummary = discussions.map(d => {
-        let summary = `• Post "${d.title}" (${d.buildingName || 'Campus'}): ${d.description}`;
+        let summary = `• "${d.title}" (${d.buildingName || 'Campus'}): ${d.description}`;
         if (d.comments && d.comments.length > 0) {
-          summary += `\n  - Latest Comment: "${d.comments[0].text}"`;
+          summary += `\n  - Student Comment: "${d.comments[0].text}"`;
         }
         return summary;
       }).join('\n\n');
 
-      aiAnswer = `Hello! Based on the campus community discussions regarding "${query}", here is what I found for you:\n\n${topMatchesSummary}\n\nHope this helps! Let me know if you need anything else.`;
+      aiAnswer = `Hello! Based on the campus community discussions regarding "${query}", here is what I found for you:\n\n${topMatchesSummary}\n\nYou can proceed confidently, but feel free to ask fellow seniors for more details!`;
     }
 
     res.json({
