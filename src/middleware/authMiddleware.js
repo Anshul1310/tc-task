@@ -1,33 +1,40 @@
 // ──────────────────────────────────────────────
 // Auth Middleware
 //
-// Checks if the user is logged in by looking at
-// the session and verifying the user exists in DB.
-// If invalid or missing, returns 401.
+// Extracts Authorization: Bearer <token> header,
+// verifies the token, and attaches the user from DB.
 // ──────────────────────────────────────────────
 
 const prisma = require("../config/db");
+const { verifyToken } = require("../utils/token");
 
 async function requireAuth(req, res, next) {
-  if (!req.session || !req.session.user) {
-    return res.status(401).json({ error: "Not authenticated. Please log in." });
+  const authHeader = req.headers.authorization;
+  let token = null;
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7).trim();
+  }
+
+  if (!token) {
+    return res.status(401).json({ error: "No authentication token provided. Please log in." });
+  }
+
+  const decoded = verifyToken(token);
+  if (!decoded || !decoded.userId) {
+    return res.status(401).json({ error: "Invalid or expired token. Please log in again." });
   }
 
   try {
-    // Verify user exists in the database
     const user = await prisma.user.findUnique({
-      where: { id: req.session.user.id },
+      where: { id: decoded.userId },
       select: { id: true, email: true, name: true, anonymousUsername: true, avatarColor: true }
     });
 
     if (!user) {
-      if (req.session) {
-        req.session.destroy();
-      }
-      return res.status(401).json({ error: "User session expired or invalid. Please log in again." });
+      return res.status(401).json({ error: "User no longer exists. Please log in again." });
     }
 
-    // Attach valid database user to request
     req.user = user;
     next();
   } catch (error) {

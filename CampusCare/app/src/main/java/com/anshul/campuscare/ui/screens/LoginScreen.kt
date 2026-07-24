@@ -1,19 +1,7 @@
 package com.anshul.campuscare.ui.screens
 
-// ──────────────────────────────────────────────
-// Login Screen
-//
-// Shows the app logo and a "Login with DAuth" button.
-// When the user taps login, a WebView opens that:
-//   1. Goes to {BASE_URL}/auth/login
-//   2. Gets redirected to DAuth login page
-//   3. User enters credentials on DAuth
-//   4. DAuth redirects back to {BASE_URL}/auth/callback
-//   5. The server creates a session and returns a cookie
-//   6. We capture that cookie and save it to SharedPreferences
-// ──────────────────────────────────────────────
-
 import android.graphics.Bitmap
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -53,25 +41,21 @@ import com.anshul.campuscare.ui.theme.TextSecondary
 fun LoginScreen(
     onLoginSuccess: () -> Unit
 ) {
-    // Track whether the WebView is shown or not
-    var showWebView: Boolean by remember { mutableStateOf(false) }
-    var isLoading: Boolean by remember { mutableStateOf(false) }
+    var showWebView by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
 
     if (showWebView) {
-        // ── WebView for DAuth Login ───────────
         LoginWebView(
             loginUrl = ApiClient.BASE_URL + "auth/login",
-            callbackUrlPrefix = ApiClient.BASE_URL + "auth/callback",
             onLoginComplete = {
                 showWebView = false
                 onLoginSuccess()
             },
-            onLoadingChanged = { loadingState: Boolean ->
+            onLoadingChanged = { loadingState ->
                 isLoading = loadingState
             }
         )
     } else {
-        // ── Login Landing Page ────────────────
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -80,7 +64,6 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // App Icon
             Text(
                 text = "💬",
                 fontSize = 72.sp
@@ -88,7 +71,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(height = 16.dp))
 
-            // App Name
             Text(
                 text = "CampusCare",
                 fontSize = 32.sp,
@@ -98,7 +80,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(height = 8.dp))
 
-            // Subtitle
             Text(
                 text = "Campus Community Discussion Platform",
                 fontSize = 16.sp,
@@ -108,7 +89,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(height = 48.dp))
 
-            // Login Button
             Button(
                 onClick = {
                     showWebView = true
@@ -130,7 +110,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(height = 16.dp))
 
-            // Info text
             Text(
                 text = "Use your NIT Trichy credentials\nto sign in securely via DAuth",
                 fontSize = 13.sp,
@@ -141,18 +120,13 @@ fun LoginScreen(
     }
 }
 
-// ──────────────────────────────────────────────
-// Login WebView
-// ──────────────────────────────────────────────
-
 @Composable
 fun LoginWebView(
     loginUrl: String,
-    callbackUrlPrefix: String,
     onLoginComplete: () -> Unit,
     onLoadingChanged: (Boolean) -> Unit
 ) {
-    var isPageLoading: Boolean by remember { mutableStateOf(true) }
+    var isPageLoading by remember { mutableStateOf(true) }
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -162,10 +136,6 @@ fun LoginWebView(
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-
-                    // Enable cookies in the WebView
-                    val cookieManager: CookieManager = CookieManager.getInstance()
-                    cookieManager.setAcceptCookie(true)
 
                     webViewClient = object : WebViewClient() {
 
@@ -184,10 +154,17 @@ fun LoginWebView(
                             isPageLoading = false
                             onLoadingChanged(false)
 
-                            // Check if we've reached the callback URL
-                            if (url != null && url.contains("/auth/callback") && url.contains("code=")) {
-                                transferCookiesToSession(url = url)
-                                onLoginComplete()
+                            if (url != null && url.contains("/auth/callback")) {
+                                // Extract token via JavaScript from rendered HTML page
+                                view?.evaluateJavascript(
+                                    "(function() { var el = document.getElementById('token'); return el ? el.innerText : ''; })();"
+                                ) { tokenResult ->
+                                    val cleanToken = tokenResult?.replace("\"", "")?.trim()
+                                    if (!cleanToken.isNullOrEmpty() && cleanToken != "null") {
+                                        ApiClient.saveAuthToken(cleanToken)
+                                        onLoginComplete()
+                                    }
+                                }
                             }
                         }
 
@@ -197,7 +174,6 @@ fun LoginWebView(
                         ): Boolean {
                             val urlString = request?.url?.toString() ?: ""
 
-                            // Check if DAuth is redirecting us back to the callback URL
                             if (urlString.contains("/auth/callback") && urlString.contains("code=")) {
                                 if (urlString.startsWith(ApiClient.BASE_URL)) {
                                     return false
@@ -215,7 +191,6 @@ fun LoginWebView(
                         }
                     }
 
-                    // Start the login flow
                     loadUrl(loginUrl)
                 }
             },
@@ -233,26 +208,5 @@ fun LoginWebView(
                 )
             }
         }
-    }
-}
-
-/**
- * Saves the session cookie from WebView's CookieManager to ApiClient.
- */
-private fun transferCookiesToSession(url: String) {
-    val cookieManager: CookieManager = CookieManager.getInstance()
-    val cookieString: String? = cookieManager.getCookie(url)
-
-    if (!cookieString.isNullOrEmpty()) {
-        val parts = cookieString.split(";")
-        for (part in parts) {
-            val trimmed = part.trim()
-            if (trimmed.startsWith("connect.sid=")) {
-                ApiClient.saveSessionCookie(trimmed)
-                return
-            }
-        }
-        // Fallback: save first cookie part
-        ApiClient.saveSessionCookie(cookieString.split(";")[0].trim())
     }
 }

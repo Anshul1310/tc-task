@@ -10,10 +10,10 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 /**
- * Simple API Client
+ * Simple Bearer Token API Client
  *
- * Saves session token/cookie directly in SharedPreferences
- * without complex custom cookie jars or serializers.
+ * Saves auth token in SharedPreferences and attaches
+ * Authorization: Bearer <token> header to all HTTP requests.
  */
 object ApiClient {
 
@@ -21,54 +21,40 @@ object ApiClient {
 
     private var sharedPreferences: SharedPreferences? = null
 
-    /**
-     * Call once in MainActivity onCreate
-     */
     fun initialize(context: Context) {
         sharedPreferences = context.getSharedPreferences("campuscare_session", Context.MODE_PRIVATE)
     }
 
     fun hasSavedSession(): Boolean {
-        return !sharedPreferences?.getString("session_cookie", null).isNullOrEmpty()
+        return !getAuthToken().isNullOrEmpty()
     }
 
     fun clearSession() {
         sharedPreferences?.edit()?.clear()?.apply()
     }
 
-    fun getSessionCookie(): String? {
-        return sharedPreferences?.getString("session_cookie", null)
+    fun getAuthToken(): String? {
+        return sharedPreferences?.getString("auth_token", null)
     }
 
-    fun saveSessionCookie(cookie: String) {
-        sharedPreferences?.edit()?.putString("session_cookie", cookie)?.apply()
+    fun saveAuthToken(token: String) {
+        sharedPreferences?.edit()?.putString("auth_token", token)?.apply()
     }
 
-    // ── Simple Interceptor: Attach & Save Session Cookie ──
-    private val sessionInterceptor = Interceptor { chain ->
+    // ── Simple Auth Interceptor: Attach Authorization Header ──
+    private val authInterceptor = Interceptor { chain ->
         val requestBuilder = chain.request().newBuilder()
 
-        // Attach cookie to outgoing request
-        val cookie = getSessionCookie()
-        if (!cookie.isNullOrEmpty()) {
-            requestBuilder.addHeader("Cookie", cookie)
+        val token = getAuthToken()
+        if (!token.isNullOrEmpty()) {
+            requestBuilder.addHeader("Authorization", "Bearer $token")
         }
 
-        val response: Response = chain.proceed(requestBuilder.build())
-
-        // Save Set-Cookie header from response
-        val setCookieHeader = response.header("Set-Cookie")
-        if (!setCookieHeader.isNullOrEmpty()) {
-            // Store raw cookie (e.g. connect.sid=s%3A...)
-            val cookieValue = setCookieHeader.split(";")[0]
-            saveSessionCookie(cookieValue)
-        }
-
-        response
+        chain.proceed(requestBuilder.build())
     }
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(sessionInterceptor)
+        .addInterceptor(authInterceptor)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)

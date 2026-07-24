@@ -3,14 +3,15 @@
 //
 // Handles the DAuth OAuth2 login flow:
 //   GET  /auth/login    → Redirects to DAuth
-//   GET  /auth/callback → DAuth redirects back here
-//   POST /auth/logout   → Destroys session
-//   GET  /auth/me       → Returns current user
+//   GET  /auth/callback → Exchange code, return JWT token & user
+//   POST /auth/logout   → Clears login response
+//   GET  /auth/me       → Returns current authenticated user
 // ──────────────────────────────────────────────
 
 const prisma = require("../config/db");
 const dauthService = require("../services/dauthService");
 const { generateUniqueUsername, getRandomAvatarColor } = require("../utils/usernameGenerator");
+const { generateToken } = require("../utils/token");
 
 // Redirect the user to DAuth's login page
 async function login(req, res) {
@@ -34,19 +35,16 @@ async function callback(req, res) {
     // Fetch user profile from DAuth
     const profile = await dauthService.getUserProfile(accessToken);
 
-    // Check if user exists first to avoid generating names unnecessarily
     let user = await prisma.user.findUnique({
       where: { email: profile.email },
     });
 
     if (user) {
-      // Update existing user
       user = await prisma.user.update({
         where: { id: user.id },
         data: { name: profile.name },
       });
     } else {
-      // Create new user with anonymous identity
       const anonymousUsername = await generateUniqueUsername();
       const avatarColor = getRandomAvatarColor();
 
@@ -60,38 +58,35 @@ async function callback(req, res) {
       });
     }
 
-    // Store user info in session (this is how we "remember" the login)
-    req.session.user = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      anonymousUsername: user.anonymousUsername,
-      avatarColor: user.avatarColor,
-    };
+    // Generate Token
+    const token = generateToken(user.id);
 
-    res.json({
-      message: "Login successful",
-      user: req.session.user,
-    });
+    // Return HTML page with token so Android WebView can extract it cleanly
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Login Successful</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+          <h2 style="color: #2e7d32;">Login Successful!</h2>
+          <p>Redirecting to CampusCare...</p>
+          <div id="token" style="font-weight: bold; word-break: break-all; padding: 10px; background: #f0f0f0;">${token}</div>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error("Auth callback error:", error.message);
     res.status(500).json({ error: "Authentication failed" });
   }
 }
 
-// Destroy the session → user is logged out
 async function logout(req, res) {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ error: "Logout failed" });
-    }
-    res.json({ message: "Logged out successfully" });
-  });
+  res.json({ message: "Logged out successfully" });
 }
 
-// Return the currently logged-in user's info
 async function getCurrentUser(req, res) {
-  // req.user is set by the authMiddleware
   res.json({ user: req.user });
 }
 

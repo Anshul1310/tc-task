@@ -8,7 +8,6 @@
 
 const express = require("express");
 const cors = require("cors");
-const session = require("express-session");
 const path = require("path");
 
 // Load environment variables from .env (in the root folder)
@@ -26,19 +25,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // Allow cross-origin requests (for frontend)
 app.use(cors());
-
-// Session middleware — stores login state
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "dev-secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      httpOnly: true,
-    },
-  })
-);
 
 // Serve uploaded images as static files
 // e.g., GET /uploads/abc123.jpg
