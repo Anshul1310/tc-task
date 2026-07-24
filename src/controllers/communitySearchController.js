@@ -36,9 +36,9 @@ async function imageSearch(req, res) {
 }
 
 /**
- * RAG Search: Combines Google Gemini domain & academic knowledge
- * with retrieved campus posts, titles, descriptions, and comments.
- * Generates rich, multi-paragraph mentor advice with rate-limit handling.
+ * RAG Search using Groq AI (LLaMA 3.3 70B / 3.1 8B):
+ * Combines Groq LLM's vast domain & academic knowledge with retrieved campus posts,
+ * titles, descriptions, and comments to generate rich, multi-paragraph mentor advice.
  */
 async function ragSearch(req, res) {
   try {
@@ -111,19 +111,20 @@ async function ragSearch(req, res) {
       });
     }
 
-    // 4. Generate Detailed Mentor Advice using Google Gemini API
-    const apiKey = process.env.GEMINI_API_KEY;
+    // 4. Generate Detailed Mentor Advice using Groq API (LLaMA 3.3 70B)
+    const groqApiKey = process.env.GROQ_API_KEY;
     let aiAnswer = "";
 
-    if (apiKey) {
-      const prompt = `You are a highly experienced, articulate, and encouraging Senior Academic & Campus Mentor at NIT Trichy.
-A student came to you asking for advice on: "${query}"
+    if (groqApiKey) {
+      const systemPrompt = `You are a highly experienced, articulate, and encouraging Senior Academic & Campus Mentor at NIT Trichy.`;
+
+      const userPrompt = `A student came to you asking for advice on: "${query}"
 
 Here is the campus community data (post titles, descriptions, locations, and student comments) retrieved from our platform:
 ${contextText.length > 0 ? contextText : "No specific posts retrieved, use your domain knowledge."}
 
 MANDATORY RESPONSE LENGTH & FORMAT RULES:
-1. YOU MUST GENERATE A COMPREHENSIVE, MULTI-PARAGRAPH MENTOR RESPONSE OF AT LEAST 150 TO 250 WORDS. DO NOT RETURN SHORT 1-2 SENTENCE ANSWERS.
+1. YOU MUST GENERATE A COMPREHENSIVE, MULTI-PARAGRAPH MENTOR RESPONSE OF AT LEAST 150 TO 250 WORDS. DO NOT RETURN SHORT ANSWERS.
 2. Structure your response into clear sections:
    • 🎓 Mentor's Overview & Greeting: Warmly greet the student and introduce your analysis.
    • 📊 Detailed Campus Analysis: Explain the post titles, descriptions, and student comments in depth, highlighting key trends, positives, and concerns.
@@ -131,45 +132,46 @@ MANDATORY RESPONSE LENGTH & FORMAT RULES:
 3. Combine your OWN vast academic domain knowledge (about NIT Trichy, course curriculums, branch culture, career placements, and campus life) together with the student discussions above.
 4. Speak in an inspiring, articulate, and supportive mentoring tone.`;
 
-      // Official Google Gemini v1beta model aliases
-      const modelsToTry = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-2.0-flash-exp",
-        "gemini-1.5-pro-latest",
-        "gemini-1.5-flash-8b"
+      const groqModelsToTry = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768"
       ];
 
-      for (const modelName of modelsToTry) {
+      for (const modelName of groqModelsToTry) {
         try {
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-          const geminiRes = await axios.post(geminiUrl, {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              maxOutputTokens: 2048,
-              temperature: 0.7
+          const groqRes = await axios.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {
+              model: modelName,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+              ],
+              temperature: 0.7,
+              max_tokens: 2048
+            },
+            {
+              headers: {
+                "Authorization": `Bearer ${groqApiKey}`,
+                "Content-Type": "application/json"
+              }
             }
-          });
+          );
 
-          const responseText = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const responseText = groqRes.data?.choices?.[0]?.message?.content;
           if (responseText && responseText.trim().length > 50) {
             aiAnswer = responseText.trim();
             break; // Success!
           }
         } catch (err) {
-          const status = err.response?.status;
           const errMsg = err.response?.data?.error?.message || err.message;
-          console.error(`Gemini model ${modelName} call failed (${status}):`, errMsg);
-
-          // If rate-limited (429), pause 1.5 seconds before trying the next model
-          if (status === 429) {
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-          }
+          console.error(`Groq model ${modelName} call failed:`, errMsg);
         }
       }
     }
 
-    // Fallback Teacher synthesis if Gemini API key is missing or calls fail/rate-limited
+    // Fallback Teacher synthesis if Groq API key is missing or calls fail
     if (!aiAnswer && discussions.length > 0) {
       const topMatchesSummary = discussions.map(d => {
         let summary = `• "${d.title}" (${d.buildingName || 'Campus'}): ${d.description}`;
