@@ -36,9 +36,9 @@ async function imageSearch(req, res) {
 }
 
 /**
- * RAG Search: Forces Gemini to generate a comprehensive, multi-paragraph
- * mentor summary (minimum 150-250+ words) blending domain knowledge
- * with retrieved post titles, descriptions, and comments.
+ * RAG Search: Combines Google Gemini domain & academic knowledge
+ * with retrieved campus posts, titles, descriptions, and comments.
+ * Generates rich, multi-paragraph mentor advice with rate-limit handling.
  */
 async function ragSearch(req, res) {
   try {
@@ -131,10 +131,13 @@ MANDATORY RESPONSE LENGTH & FORMAT RULES:
 3. Combine your OWN vast academic domain knowledge (about NIT Trichy, course curriculums, branch culture, career placements, and campus life) together with the student discussions above.
 4. Speak in an inspiring, articulate, and supportive mentoring tone.`;
 
+      // Official Google Gemini v1beta model aliases
       const modelsToTry = [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-2.0-flash"
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-pro-latest",
+        "gemini-1.5-flash-8b"
       ];
 
       for (const modelName of modelsToTry) {
@@ -151,15 +154,22 @@ MANDATORY RESPONSE LENGTH & FORMAT RULES:
           const responseText = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;
           if (responseText && responseText.trim().length > 50) {
             aiAnswer = responseText.trim();
-            break;
+            break; // Success!
           }
         } catch (err) {
-          console.error(`Gemini model ${modelName} call failed:`, err.message);
+          const status = err.response?.status;
+          const errMsg = err.response?.data?.error?.message || err.message;
+          console.error(`Gemini model ${modelName} call failed (${status}):`, errMsg);
+
+          // If rate-limited (429), pause 1.5 seconds before trying the next model
+          if (status === 429) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
         }
       }
     }
 
-    // Fallback Teacher synthesis if Gemini API key is missing or calls fail
+    // Fallback Teacher synthesis if Gemini API key is missing or calls fail/rate-limited
     if (!aiAnswer && discussions.length > 0) {
       const topMatchesSummary = discussions.map(d => {
         let summary = `• "${d.title}" (${d.buildingName || 'Campus'}): ${d.description}`;
@@ -169,7 +179,7 @@ MANDATORY RESPONSE LENGTH & FORMAT RULES:
         return summary;
       }).join('\n\n');
 
-      aiAnswer = `Hello! Based on our campus community discussions regarding "${query}", here is a detailed breakdown for you:\n\n${topMatchesSummary}\n\nYou can proceed confidently with this decision based on positive community feedback!`;
+      aiAnswer = `🎓 **Mentor's Overview & Greeting**\nHello! Based on our campus community discussions regarding "${query}", I've analyzed the available student posts and feedback for you.\n\n📊 **Detailed Campus Analysis**\n${topMatchesSummary}\n\n💡 **Strategic Advisory & Recommendation**\nYou can proceed confidently with this decision based on positive community feedback! Keep exploring and feel free to reach out to senior students for further insights.`;
     }
 
     res.json({
