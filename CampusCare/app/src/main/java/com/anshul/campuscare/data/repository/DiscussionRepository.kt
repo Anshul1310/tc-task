@@ -1,8 +1,12 @@
 package com.anshul.campuscare.data.repository
 
+import android.content.ContentResolver
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import com.anshul.campuscare.data.model.*
 import com.anshul.campuscare.data.network.ApiService
 import com.google.gson.Gson
@@ -14,8 +18,6 @@ import retrofit2.Response
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import android.webkit.MimeTypeMap
-import android.content.ContentResolver
 
 class DiscussionRepository(private val apiService: ApiService, private val context: Context) {
 
@@ -76,8 +78,7 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
 
         val imageParts = imageUris.mapNotNull { uri ->
             getFileFromUri(uri)?.let { file ->
-                val mimeType = getMimeType(uri) ?: "image/jpeg"
-                val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
+                val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
                 MultipartBody.Part.createFormData("images", file.name, requestFile)
             }
         }
@@ -121,8 +122,7 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         val textPart = text.toRequestBody("text/plain".toMediaTypeOrNull())
         val imagePart = imageUri?.let { uri ->
             getFileFromUri(uri)?.let { file ->
-                val mimeType = getMimeType(uri) ?: "image/jpeg"
-                val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
+                val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
                 MultipartBody.Part.createFormData("image", file.name, requestFile)
             }
         }
@@ -171,8 +171,7 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
     suspend fun searchDiscussionsByImage(imageUri: Uri): Result<List<DiscussionMatch>> = try {
         val file = getFileFromUri(imageUri)
         if (file != null) {
-            val mimeType = getMimeType(imageUri) ?: "image/jpeg"
-            val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
+            val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
             val imagePart = MultipartBody.Part.createFormData("image", file.name, requestFile)
             
             val response = apiService.searchDiscussionsByImage(imagePart)
@@ -188,28 +187,64 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         Result.failure(e)
     }
 
-    private fun getMimeType(uri: Uri): String? {
-        var mimeType: String? = null
-        if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
-            mimeType = context.contentResolver.getType(uri)
-        } else {
-            val fileExtension = MimeTypeMap.getFileExtensionFromUrl(uri.toString())
-            mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExtension.lowercase())
+    /**
+     * Rescales and compresses an image from Uri down to max 1600px at 80% JPEG quality.
+     * Reduces 10MB camera photos to ~150KB - 300KB for fast upload & low server storage.
+     */
+    private fun getFileFromUri(uri: Uri): File? {
+        return try {
+            val contentResolver = context.contentResolver
+            
+            // 1. Decode bounds to inspect dimensions without loading into memory
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+
+            if (options.outWidth <= 0 || options.outHeight <= 0) {
+                return getFileFromUriFallback(uri)
+            }
+
+            // 2. Calculate scaling factor (max dimension 1600px)
+            val maxDimension = 1600
+            var inSampleSize = 1
+            if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
+                val halfHeight = options.outHeight / 2
+                val halfWidth = options.outWidth / 2
+                while ((halfHeight / inSampleSize) >= maxDimension && (halfWidth / inSampleSize) >= maxDimension) {
+                    inSampleSize *= 2
+                }
+            }
+
+            // 3. Decode scaled bitmap
+            val scaleOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+            }
+            val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, scaleOptions)
+            } ?: return getFileFromUriFallback(uri)
+
+            // 4. Compress to JPEG (80% quality)
+            val fileName = "compressed_${System.currentTimeMillis()}_${(100..999).random()}.jpg"
+            val compressedFile = File(context.cacheDir, fileName)
+            val outputStream = FileOutputStream(compressedFile)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+            outputStream.flush()
+            outputStream.close()
+            bitmap.recycle()
+
+            compressedFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            getFileFromUriFallback(uri)
         }
-        return mimeType
     }
 
-    private fun getFileFromUri(uri: Uri): File? {
+    private fun getFileFromUriFallback(uri: Uri): File? {
         val contentResolver = context.contentResolver
-        val cursor = contentResolver.query(uri, null, null, null, null)
-        val name = cursor?.use {
-            if (it.moveToFirst()) {
-                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (nameIndex != -1) it.getString(nameIndex) else "temp_file"
-            } else "temp_file"
-        } ?: "temp_file"
-
-        val tempFile = File(context.cacheDir, name)
+        val tempFile = File(context.cacheDir, "fallback_${System.currentTimeMillis()}.jpg")
         return try {
             val inputStream: InputStream? = contentResolver.openInputStream(uri)
             val outputStream = FileOutputStream(tempFile)

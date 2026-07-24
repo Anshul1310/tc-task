@@ -177,8 +177,9 @@ async function getDiscussionById(req, res) {
         6
       );
 
+      const RELATED_THRESHOLD = 0.55;
       const relatedIds = matches
-        .filter((m) => m.discussionId !== id)
+        .filter((m) => m.discussionId !== id && m.similarity >= RELATED_THRESHOLD)
         .map((m) => m.discussionId);
 
       if (relatedIds.length > 0) {
