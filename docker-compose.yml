@@ -1,43 +1,16 @@
 # ──────────────────────────────────────────────
 # Docker Compose
 #
-# Starts three services:
-#   1. db         — PostgreSQL with pgvector extension
-#   2. embeddings — Python FastEmbed server (ONNX)
-#   3. app        — Node.js backend
+# Services:
+#   1. embeddings — Python FastEmbed + ChromaDB sidecar
+#   2. app        — Node.js Express backend
 #
-# Usage:
-#   docker compose up        (start all)
-#   docker compose up -d     (start in background)
-#   docker compose down      (stop all)
-#   docker compose logs app  (view backend logs)
+# Named volumes (chroma_data & uploads_data) ensure data
+# persists across `docker compose down` and container restarts.
 # ──────────────────────────────────────────────
 
 services:
-  # ── PostgreSQL + pgvector ──────────────────
-  db:
-    # pgvector/pgvector:pg17 comes with pgvector pre-installed
-    image: pgvector/pgvector:pg17
-    container_name: campuscare-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 14dc
-      POSTGRES_DB: campuscare
-    ports:
-      - "5433:5432"
-    volumes:
-      # Persist database data across restarts
-      - pgdata:/var/lib/postgresql/data
-      # Run init script to enable pgvector extension
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # ── Python Embedding Server ────────────────
+  # ── Python Embedding & ChromaDB Server ──────
   embeddings:
     container_name: campuscare-embeddings
     build:
@@ -46,16 +19,15 @@ services:
     restart: unless-stopped
     ports:
       - "5050:5050"
+    env_file:
+      - .env
     volumes:
-      # Share uploads directory so embeddings server can read images
-      - ./src/uploads:/app/uploads
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5050/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      # Persist ChromaDB data persistently
+      - chroma_data:/app/chroma_db
+      # Persist & share uploaded media
+      - uploads_data:/app/uploads
 
-  # ── Node.js Backend ────────────────────────
+  # ── Node.js Express Backend ──────────────────
   app:
     container_name: campuscare-app
     build:
@@ -63,24 +35,27 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
     environment:
       PORT: 3000
-      NODE_ENV: development
-      DATABASE_URL: postgresql://postgres:password@db:5432/campuscare?schema=public
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL}
       EMBEDDING_SERVICE_URL: http://embeddings:5050
+      OPENCAGE_API_KEY: ${OPENCAGE_API_KEY}
       DAUTH_CLIENT_ID: ${DAUTH_CLIENT_ID}
       DAUTH_CLIENT_SECRET: ${DAUTH_CLIENT_SECRET}
       DAUTH_REDIRECT_URI: ${DAUTH_REDIRECT_URI}
       SESSION_SECRET: ${SESSION_SECRET}
     volumes:
-      # Persist uploaded images
-      - ./src/uploads:/app/src/uploads
+      # Persist uploaded media
+      - uploads_data:/app/src/uploads
     depends_on:
-      db:
-        condition: service_healthy
-      embeddings:
-        condition: service_healthy
+      - embeddings
 
 volumes:
-  pgdata:
+  chroma_data:
+    driver: local
+  uploads_data:
+    driver: local
