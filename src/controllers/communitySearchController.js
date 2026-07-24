@@ -36,9 +36,9 @@ async function imageSearch(req, res) {
 }
 
 /**
- * RAG Search using Groq AI (LLaMA 3.3 70B / 3.1 8B):
- * Combines Groq LLM's vast domain & academic knowledge with retrieved campus posts,
- * titles, descriptions, and comments to generate rich, multi-paragraph mentor advice.
+ * RAG Search using Groq AI (LLaMA 3.3 70B):
+ * Generates a concise (~80-120 words) mentor summary with HIGH WEIGHTAGE
+ * on retrieved post titles, descriptions, and user comments.
  */
 async function ragSearch(req, res) {
   try {
@@ -98,39 +98,37 @@ async function ragSearch(req, res) {
         if (d.buildingName) contextText += `Location/Department: ${d.buildingName}\n`;
         contextText += `Post Description: ${d.description}\n`;
         if (d.comments && d.comments.length > 0) {
-          contextText += `Student Comments & Feedback:\n`;
+          contextText += `Student Comments & Discussion Updates:\n`;
           d.comments.forEach((c) => {
-            contextText += `  - ${c.author?.anonymousUsername || "Student"}: "${c.text}"\n`;
+            contextText += `  - Comment by ${c.author?.anonymousUsername || "Student"}: "${c.text}"\n`;
             if (c.replies) {
               c.replies.forEach((r) => {
                 contextText += `    * Reply by ${r.author?.anonymousUsername || "Student"}: "${r.text}"\n`;
               });
             }
           });
+        } else {
+          contextText += `Comments: No comments posted yet.\n`;
         }
       });
     }
 
-    // 4. Generate Detailed Mentor Advice using Groq API (LLaMA 3.3 70B)
+    // 4. Generate Concise, High-Weightage Mentor Advice using Groq API
     const groqApiKey = process.env.GROQ_API_KEY;
     let aiAnswer = "";
 
     if (groqApiKey) {
-      const systemPrompt = `You are a highly experienced, articulate, and encouraging Senior Academic & Campus Mentor at NIT Trichy.`;
+      const systemPrompt = `You are a concise, insightful, and encouraging Senior Academic & Campus Mentor at NIT Trichy. Your job is to analyze campus community posts, descriptions, and comments, and deliver a crisp, high-weightage summary for the student.`;
 
-      const userPrompt = `A student came to you asking for advice on: "${query}"
+      const userPrompt = `Student Query: "${query}"
 
-Here is the campus community data (post titles, descriptions, locations, and student comments) retrieved from our platform:
-${contextText.length > 0 ? contextText : "No specific posts retrieved, use your domain knowledge."}
+RETRIEVED CAMPUS COMMUNITY DATA (Post Titles, Descriptions, Locations & User Comments):
+${contextText.length > 0 ? contextText : "No specific matching posts retrieved."}
 
-MANDATORY RESPONSE LENGTH & FORMAT RULES:
-1. YOU MUST GENERATE A COMPREHENSIVE, MULTI-PARAGRAPH MENTOR RESPONSE OF AT LEAST 150 TO 250 WORDS. DO NOT RETURN SHORT ANSWERS.
-2. Structure your response into clear sections:
-   • 🎓 Mentor's Overview & Greeting: Warmly greet the student and introduce your analysis.
-   • 📊 Detailed Campus Analysis: Explain the post titles, descriptions, and student comments in depth, highlighting key trends, positives, and concerns.
-   • 💡 Strategic Advisory & Recommendation: Give your explicit mentor recommendation (e.g., "So you can comfortably opt for this branch/choice because... but still keep in mind...").
-3. Combine your OWN vast academic domain knowledge (about NIT Trichy, course curriculums, branch culture, career placements, and campus life) together with the student discussions above.
-4. Speak in an inspiring, articulate, and supportive mentoring tone.`;
+MANDATORY INSTRUCTIONS:
+1. RESPONSE LENGTH: Keep your response CRISP and CONCISE (around 80 to 120 words total). Perfect for mobile reading!
+2. HIGH WEIGHTAGE ON POSTS & COMMENTS: Give HIGHEST PRIORITY to analyzing the specific post titles, descriptions, and student comments retrieved above. Directly cite and address what users reported and commented (including any status updates or fixes).
+3. MENTOR ADVICE & CONCLUSION: Structure your answer warmly. Summarize the post & comment details clearly, and conclude with a direct recommendation (e.g., "So based on student feedback and comments, you can proceed with this choice because...").`;
 
       const groqModelsToTry = [
         "llama-3.3-70b-versatile",
@@ -148,8 +146,8 @@ MANDATORY RESPONSE LENGTH & FORMAT RULES:
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt }
               ],
-              temperature: 0.7,
-              max_tokens: 2048
+              temperature: 0.6,
+              max_tokens: 500
             },
             {
               headers: {
@@ -160,7 +158,7 @@ MANDATORY RESPONSE LENGTH & FORMAT RULES:
           );
 
           const responseText = groqRes.data?.choices?.[0]?.message?.content;
-          if (responseText && responseText.trim().length > 50) {
+          if (responseText && responseText.trim().length > 30) {
             aiAnswer = responseText.trim();
             break; // Success!
           }
@@ -176,12 +174,12 @@ MANDATORY RESPONSE LENGTH & FORMAT RULES:
       const topMatchesSummary = discussions.map(d => {
         let summary = `• "${d.title}" (${d.buildingName || 'Campus'}): ${d.description}`;
         if (d.comments && d.comments.length > 0) {
-          summary += `\n  - Student Comment: "${d.comments[0].text}"`;
+          summary += ` [Comment: "${d.comments[0].text}"]`;
         }
         return summary;
-      }).join('\n\n');
+      }).join('\n');
 
-      aiAnswer = `🎓 **Mentor's Overview & Greeting**\nHello! Based on our campus community discussions regarding "${query}", I've analyzed the available student posts and feedback for you.\n\n📊 **Detailed Campus Analysis**\n${topMatchesSummary}\n\n💡 **Strategic Advisory & Recommendation**\nYou can proceed confidently with this decision based on positive community feedback! Keep exploring and feel free to reach out to senior students for further insights.`;
+      aiAnswer = `Hello! Based on student posts and comments regarding "${query}":\n\n${topMatchesSummary}\n\nBased on community feedback, you can proceed with confidence!`;
     }
 
     res.json({
