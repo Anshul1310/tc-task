@@ -36,9 +36,9 @@ async function imageSearch(req, res) {
 }
 
 /**
- * RAG Search: Combines Gemini 1.5 Pro's domain & academic knowledge
- * with retrieved campus posts, titles, descriptions, and comments.
- * Generates rich mentor/advisory text guiding the student.
+ * RAG Search: Forces Gemini to generate a comprehensive, multi-paragraph
+ * mentor summary (minimum 150-250+ words) blending domain knowledge
+ * with retrieved post titles, descriptions, and comments.
  */
 async function ragSearch(req, res) {
   try {
@@ -111,27 +111,29 @@ async function ragSearch(req, res) {
       });
     }
 
-    // 4. Generate Rich Mentor Advice using Gemini 1.5 Pro (with Gemini 2.5 Flash fallback)
+    // 4. Generate Detailed Mentor Advice using Google Gemini API
     const apiKey = process.env.GEMINI_API_KEY;
     let aiAnswer = "";
 
     if (apiKey) {
-      const prompt = `You are a wise, supportive, and experienced Academic & Campus Mentor at NIT Trichy.
+      const prompt = `You are a highly experienced, articulate, and encouraging Senior Academic & Campus Mentor at NIT Trichy.
 A student came to you asking for advice on: "${query}"
 
-Here is the campus community data (post titles, descriptions, locations, and student comments) retrieved from our database:
+Here is the campus community data (post titles, descriptions, locations, and student comments) retrieved from our platform:
 ${contextText.length > 0 ? contextText : "No specific posts retrieved, use your domain knowledge."}
 
-Instructions for your Mentor response:
-1. Combine your OWN vast domain knowledge (about NIT Trichy, academic branches, career scope, campus life, and student advice) TOGETHER with the retrieved campus posts and comments.
-2. Give a clear, encouraging recommendation (for example: "Based on campus feedback and academic scope, you can comfortably opt for this branch since everything I found from student reviews is positive, but still keep in mind...").
-3. Break down key takeaways from the post titles, descriptions, and comments, while adding your own mentor insights.
-4. Speak warmly, intelligently, and inspiringly like a real mentor guiding a student toward their best decision.`;
+MANDATORY RESPONSE LENGTH & FORMAT RULES:
+1. YOU MUST GENERATE A COMPREHENSIVE, MULTI-PARAGRAPH MENTOR RESPONSE OF AT LEAST 150 TO 250 WORDS. DO NOT RETURN SHORT 1-2 SENTENCE ANSWERS.
+2. Structure your response into clear sections:
+   • 🎓 Mentor's Overview & Greeting: Warmly greet the student and introduce your analysis.
+   • 📊 Detailed Campus Analysis: Explain the post titles, descriptions, and student comments in depth, highlighting key trends, positives, and concerns.
+   • 💡 Strategic Advisory & Recommendation: Give your explicit mentor recommendation (e.g., "So you can comfortably opt for this branch/choice because... but still keep in mind...").
+3. Combine your OWN vast academic domain knowledge (about NIT Trichy, course curriculums, branch culture, career placements, and campus life) together with the student discussions above.
+4. Speak in an inspiring, articulate, and supportive mentoring tone.`;
 
-      // Try Gemini 1.5 Pro first (Reasoning & Domain Knowledge Model)
       const modelsToTry = [
-        "gemini-1.5-pro",
         "gemini-2.5-flash",
+        "gemini-1.5-pro",
         "gemini-1.5-flash"
       ];
 
@@ -139,13 +141,17 @@ Instructions for your Mentor response:
         try {
           const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
           const geminiRes = await axios.post(geminiUrl, {
-            contents: [{ parts: [{ text: prompt }] }]
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              maxOutputTokens: 2048,
+              temperature: 0.7
+            }
           });
 
           const responseText = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (responseText) {
-            aiAnswer = responseText;
-            break; // Success!
+          if (responseText && responseText.trim().length > 50) {
+            aiAnswer = responseText.trim();
+            break;
           }
         } catch (err) {
           console.error(`Gemini model ${modelName} call failed:`, err.message);
@@ -163,7 +169,7 @@ Instructions for your Mentor response:
         return summary;
       }).join('\n\n');
 
-      aiAnswer = `Hello! Based on the campus community discussions regarding "${query}", here is what I found for you:\n\n${topMatchesSummary}\n\nYou can proceed confidently, but feel free to ask fellow seniors for more details!`;
+      aiAnswer = `Hello! Based on our campus community discussions regarding "${query}", here is a detailed breakdown for you:\n\n${topMatchesSummary}\n\nYou can proceed confidently with this decision based on positive community feedback!`;
     }
 
     res.json({
