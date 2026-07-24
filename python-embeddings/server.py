@@ -1,13 +1,4 @@
-# ──────────────────────────────────────────────
-# Embedding & ChromaDB Vector Server
-#
-# Uses FastEmbed (ONNX-based) for generating embeddings
-# and ChromaDB (PersistentClient) for storing and querying
-# vectors locally in python-embeddings/chroma_db/.
-#
-# Run:
-#   uvicorn server:app --host 0.0.0.0 --port 5050
-# ──────────────────────────────────────────────
+
 
 import os
 import tempfile

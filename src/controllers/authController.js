@@ -1,25 +1,14 @@
-// ──────────────────────────────────────────────
-// Auth Controller
-//
-// Handles the DAuth OAuth2 login flow:
-//   GET  /auth/login    → Redirects to DAuth
-//   GET  /auth/callback → Exchange code, return JWT token & user
-//   POST /auth/logout   → Clears login response
-//   GET  /auth/me       → Returns current authenticated user
-// ──────────────────────────────────────────────
 
 const prisma = require("../config/db");
 const dauthService = require("../services/dauthService");
 const { generateUniqueUsername, getRandomAvatarColor } = require("../utils/usernameGenerator");
 const { generateToken } = require("../utils/token");
 
-// Redirect the user to DAuth's login page
 async function login(req, res) {
   const authUrl = dauthService.getAuthorizationUrl();
   res.redirect(authUrl);
 }
 
-// DAuth redirects the user back here with ?code=xxx
 async function callback(req, res) {
   try {
     const { code } = req.query;
@@ -28,11 +17,9 @@ async function callback(req, res) {
       return res.status(400).json({ error: "Authorization code missing" });
     }
 
-    // Exchange code for access token (server-to-server)
     const tokenData = await dauthService.exchangeCodeForToken(code);
     const accessToken = tokenData.access_token;
 
-    // Fetch user profile from DAuth
     const profile = await dauthService.getUserProfile(accessToken);
 
     let user = await prisma.user.findUnique({
@@ -58,10 +45,8 @@ async function callback(req, res) {
       });
     }
 
-    // Generate Token
     const token = generateToken(user.id);
 
-    // Return HTML page with token so Android WebView can extract it cleanly
     res.send(`
       <!DOCTYPE html>
       <html>

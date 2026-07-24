@@ -80,7 +80,7 @@ fun DiscussionDetailScreen(
         if (newCommentText.isBlank()) return
         isPosting = true
         coroutineScope.launch {
-            val result = discussionRepository.addComment(discussionId, newCommentText, null)
+            val result = discussionRepository.addComment(discussionId, newCommentText)
             isPosting = false
             result.onSuccess {
                 newCommentText = ""
@@ -142,9 +142,7 @@ fun DiscussionDetailScreen(
                     .padding(padding),
                 contentPadding = PaddingValues(16.dp)
             ) {
-                // Post Body
                 item {
-                    // Author Header
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = discussion!!.createdBy?.avatarColor ?: "⬛",
@@ -161,14 +159,12 @@ fun DiscussionDetailScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Title
                     Text(
                         text = discussion!!.title,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
 
-                    // Location (if present)
                     if (!discussion!!.buildingName.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -190,13 +186,11 @@ fun DiscussionDetailScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Description
                     Text(
                         text = discussion!!.description,
                         style = MaterialTheme.typography.bodyLarge
                     )
 
-                    // Uploaded Images Section
                     if (discussion!!.images.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
                         LazyRow(
@@ -224,7 +218,6 @@ fun DiscussionDetailScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Upvote Action
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { toggleUpvote() }) {
                             Icon(
@@ -236,7 +229,6 @@ fun DiscussionDetailScreen(
                         Text("${discussion!!.upvoteCount} Upvotes", fontWeight = FontWeight.SemiBold)
                     }
 
-                    // Related Discussions Section (if available)
                     if (relatedDiscussions.isNotEmpty()) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
                         Text(
@@ -296,7 +288,6 @@ fun DiscussionDetailScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // Comments List
                 items(discussion!!.comments ?: emptyList()) { comment ->
                     CommentItem(comment)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -326,44 +317,6 @@ fun CommentItem(comment: Comment) {
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = comment.text, style = MaterialTheme.typography.bodyMedium)
-
-            // Comment Image (if present)
-            if (!comment.image.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                AsyncImage(
-                    model = ApiClient.BASE_URL + comment.image,
-                    contentDescription = "Comment Image",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
-            }
-
-            // Nested Replies
-            if (!comment.replies.isNullOrEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(modifier = Modifier.padding(start = 16.dp)) {
-                    comment.replies.forEach { reply ->
-                        Row(modifier = Modifier.padding(vertical = 4.dp)) {
-                            Text(
-                                text = reply.author?.avatarColor ?: "⬛",
-                                modifier = Modifier.padding(end = 4.dp)
-                            )
-                            Text(
-                                text = "${reply.author?.anonymousUsername ?: "Unknown"}: ",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = reply.text,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }

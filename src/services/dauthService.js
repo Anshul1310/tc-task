@@ -1,19 +1,10 @@
-// ──────────────────────────────────────────────
-// DAuth Service
-//
-// Wraps all communication with DAuth (auth.delta.nitt.edu).
-// DAuth is NIT Trichy's OAuth2 SSO. This file handles:
-//   1. Building the login URL (where we redirect the user)
-//   2. Exchanging an auth code for an access token
-//   3. Fetching the user's profile with the access token
-// ──────────────────────────────────────────────
+
 
 const axios = require("axios");
 
 const DAUTH_BASE_URL = "https://auth.delta.nitt.edu";
 
-// Step 1: Build the URL that starts the OAuth2 login flow.
-// We redirect the user's browser to this URL.
+
 function getAuthorizationUrl() {
   console.log("\n=== DAUTH CONFIGURATION ===");
   console.log("CLIENT_ID:", process.env.DAUTH_CLIENT_ID);
@@ -34,8 +25,7 @@ function getAuthorizationUrl() {
   return `${DAUTH_BASE_URL}/authorize?${params.toString()}`;
 }
 
-// Step 2: Exchange the authorization code for an access token.
-// This is a server-to-server call (the user never sees it).
+
 async function exchangeCodeForToken(code) {
   console.log("\n=== DAUTH TOKEN EXCHANGE ===");
   console.log("CLIENT_ID sent:", process.env.DAUTH_CLIENT_ID);
@@ -56,10 +46,9 @@ async function exchangeCodeForToken(code) {
     }
   );
 
-  return response.data; // { access_token, token_type, ... }
+  return response.data;
 }
 
-// Step 3: Use the access token to fetch the user's profile.
 async function getUserProfile(accessToken) {
   const response = await axios.post(
     `${DAUTH_BASE_URL}/api/resources/user`,
@@ -69,7 +58,7 @@ async function getUserProfile(accessToken) {
     }
   );
 
-  return response.data; // { email, name, ... }
+  return response.data;
 }
 
 module.exports = {

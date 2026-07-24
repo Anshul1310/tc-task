@@ -117,16 +117,8 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         Result.failure(e)
     }
 
-    suspend fun addComment(discussionId: Int, text: String, imageUri: Uri?): Result<Comment> = try {
-        val textPart = text.toRequestBody("text/plain".toMediaTypeOrNull())
-        val imagePart = imageUri?.let { uri ->
-            getFileFromUri(uri)?.let { file ->
-                val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-                MultipartBody.Part.createFormData("image", file.name, requestFile)
-            }
-        }
-
-        val response = apiService.addComment(discussionId, textPart, imagePart)
+    suspend fun addComment(discussionId: Int, text: String): Result<Comment> = try {
+        val response = apiService.addComment(discussionId, text)
         if (response.isSuccessful && response.body() != null) {
             Result.success(response.body()!!.comment)
         } else {
@@ -144,7 +136,6 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
     } catch (e: Exception) {
         null
     }
-
 
     suspend fun ragSearch(query: String): Result<RagSearchResponse> = try {
         val response = apiService.ragSearch(query)

@@ -221,20 +221,6 @@ async function getDiscussionById(req, res) {
                 anonymousUsername: true,
                 avatarColor: true
               }
-            },
-            replies: {
-              include: {
-                author: {
-                  select: {
-                    id: true,
-                    anonymousUsername: true,
-                    avatarColor: true
-                  }
-                }
-              },
-              orderBy: {
-                createdAt: "asc"
-              }
             }
           },
           orderBy: {

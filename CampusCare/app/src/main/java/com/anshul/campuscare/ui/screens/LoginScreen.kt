@@ -1,8 +1,6 @@
 package com.anshul.campuscare.ui.screens
 
 import android.graphics.Bitmap
-import android.net.Uri
-import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -26,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,7 +34,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.anshul.campuscare.data.network.ApiClient
+import com.anshul.campuscare.data.repository.AuthRepository
 import com.anshul.campuscare.ui.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun LoginScreen(
@@ -127,6 +130,7 @@ fun LoginWebView(
     onLoadingChanged: (Boolean) -> Unit
 ) {
     var isPageLoading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -155,14 +159,18 @@ fun LoginWebView(
                             onLoadingChanged(false)
 
                             if (url != null && url.contains("/auth/callback")) {
-                                // Extract token via JavaScript from rendered HTML page
                                 view?.evaluateJavascript(
                                     "(function() { var el = document.getElementById('token'); return el ? el.innerText : ''; })();"
                                 ) { tokenResult ->
                                     val cleanToken = tokenResult?.replace("\"", "")?.trim()
-                                    if (!cleanToken.isNullOrEmpty() && cleanToken != "null") {
+                                    if (cleanToken != null && cleanToken.isNotEmpty() && cleanToken != "null") {
                                         ApiClient.saveAuthToken(cleanToken)
-                                        onLoginComplete()
+                                        scope.launch(Dispatchers.IO) {
+                                            AuthRepository.fetchAndSaveCurrentUser()
+                                            withContext(Dispatchers.Main) {
+                                                onLoginComplete()
+                                            }
+                                        }
                                     }
                                 }
                             }

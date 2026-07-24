@@ -1,16 +1,9 @@
 package com.anshul.campuscare.data.network
 
-// ──────────────────────────────────────────────
-// API Service Interface
-//
-// Defines all the HTTP endpoints for the backend.
-// ──────────────────────────────────────────────
-
 import com.anshul.campuscare.data.model.AddressResponse
 import com.anshul.campuscare.data.model.CommentResponse
 import com.anshul.campuscare.data.model.DiscussionsResponse
 import com.anshul.campuscare.data.model.LogoutResponse
-import com.anshul.campuscare.data.model.ReplyResponse
 import com.anshul.campuscare.data.model.SearchDiscussionsResponse
 import com.anshul.campuscare.data.model.SingleDiscussionResponse
 import com.anshul.campuscare.data.model.UserResponse
@@ -25,17 +18,11 @@ import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
-import retrofit2.http.Url
 
 interface ApiService {
 
-
     @GET("auth/me")
     suspend fun getCurrentUser(): Response<UserResponse>
-
-    @POST("auth/logout")
-    suspend fun logout(): Response<LogoutResponse>
-
 
     @GET("discussions")
     suspend fun getAllDiscussions(): Response<DiscussionsResponse>
@@ -61,21 +48,12 @@ interface ApiService {
     @POST("discussions/{id}/upvote")
     suspend fun toggleUpvote(@Path("id") discussionId: Int): Response<Any>
 
-    @Multipart
+    @FormUrlEncoded
     @POST("discussions/{id}/comments")
     suspend fun addComment(
         @Path("id") discussionId: Int,
-        @Part("text") text: RequestBody,
-        @Part image: MultipartBody.Part?
-    ): Response<CommentResponse>
-
-    @FormUrlEncoded
-    @POST("comments/{id}/replies")
-    suspend fun addReply(
-        @Path("id") commentId: Int,
         @Field("text") text: String
-    ): Response<ReplyResponse>
-
+    ): Response<CommentResponse>
 
     @FormUrlEncoded
     @POST("community/search/text")
@@ -94,7 +72,6 @@ interface ApiService {
     suspend fun ragSearch(
         @Field("query") query: String
     ): Response<com.anshul.campuscare.data.model.RagSearchResponse>
-
 
     @GET("location/reverse-geocode")
     suspend fun reverseGeocode(

@@ -1,11 +1,3 @@
-// ──────────────────────────────────────────────
-// Auth Routes
-//
-// GET  /auth/login    → Start DAuth login
-// GET  /auth/callback → DAuth redirects here
-// POST /auth/logout   → End session
-// GET  /auth/me       → Get current user (protected)
-// ──────────────────────────────────────────────
 
 const express = require("express");
 const router = express.Router();

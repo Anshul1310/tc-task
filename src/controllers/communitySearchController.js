@@ -94,17 +94,6 @@ async function ragSearch(req, res) {
                   anonymousUsername: true,
                   avatarColor: true
                 }
-              },
-              replies: {
-                include: {
-                  author: {
-                    select: {
-                      id: true,
-                      anonymousUsername: true,
-                      avatarColor: true
-                    }
-                  }
-                }
               }
             }
           },
@@ -151,16 +140,6 @@ async function ragSearch(req, res) {
               authorName = c.author.anonymousUsername;
             }
             contextText = contextText + "  - Comment by " + authorName + ": \"" + c.text + "\"\n";
-            if (c.replies) {
-              for (let k = 0; k < c.replies.length; k = k + 1) {
-                const r = c.replies[k];
-                let replyAuthorName = "Student";
-                if (r.author && r.author.anonymousUsername) {
-                  replyAuthorName = r.author.anonymousUsername;
-                }
-                contextText = contextText + "    * Reply by " + replyAuthorName + ": \"" + r.text + "\"\n";
-              }
-            }
           }
         } else {
           contextText = contextText + "Comments: No comments posted yet.\n";
