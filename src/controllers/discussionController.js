@@ -167,17 +167,17 @@ async function getDiscussionById(req, res) {
     };
     delete response.upvotes;
 
-    // Fetch related discussions via ChromaDB vector similarity
+    // Fetch related discussions via ChromaDB text vector similarity only
     let relatedDiscussions = [];
     try {
       const matches = await findSimilarDiscussions(
         discussion.title,
         discussion.description,
-        discussion.images.length > 0 ? discussion.images[0] : null,
+        null, // Text-only similarity for related discussions
         6
       );
 
-      const RELATED_THRESHOLD = 0.55;
+      const RELATED_THRESHOLD = 0.78;
       const relatedIds = matches
         .filter((m) => m.discussionId !== id && m.similarity >= RELATED_THRESHOLD)
         .map((m) => m.discussionId);
