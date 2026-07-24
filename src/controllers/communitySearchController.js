@@ -36,8 +36,9 @@ async function imageSearch(req, res) {
 }
 
 /**
- * RAG Search: Retrieves top matching discussions + comments via ChromaDB
- * and generates a direct AI answer using Google Gemini.
+ * RAG Search: Filters top matching posts with similarity >= 0.85 (85%),
+ * compiles their titles, descriptions, and comment sections,
+ * and uses Google Gemini to summarize them as an AI Answer for the user query.
  */
 async function ragSearch(req, res) {
   try {
@@ -47,13 +48,18 @@ async function ragSearch(req, res) {
       return res.status(400).json({ error: "Search query is required" });
     }
 
+    const SIMILARITY_THRESHOLD = 0.85;
+
     // 1. Vector Search in ChromaDB
-    const vectorMatches = await findSimilarDiscussions(query.trim(), null, null, 5);
-    const discussionIds = vectorMatches.map((m) => m.discussionId);
+    const vectorMatches = await findSimilarDiscussions(query.trim(), null, null, 10);
+
+    // Filter only top matching posts with similarity >= 85%
+    const topMatches = vectorMatches.filter((m) => m.similarity >= SIMILARITY_THRESHOLD);
+    const discussionIds = topMatches.map((m) => m.discussionId);
 
     let discussions = [];
     if (discussionIds.length > 0) {
-      // 2. Fetch full discussions & comments from PostgreSQL
+      // 2. Fetch full matching discussions & comments from PostgreSQL
       const dbDiscussions = await prisma.discussion.findMany({
         where: { id: { in: discussionIds } },
         include: {
@@ -71,7 +77,7 @@ async function ragSearch(req, res) {
       });
 
       // Preserve vector similarity order
-      const similarityMap = new Map(vectorMatches.map((m) => [m.discussionId, m.similarity]));
+      const similarityMap = new Map(topMatches.map((m) => [m.discussionId, m.similarity]));
       discussions = dbDiscussions
         .map((d) => ({
           ...d,
@@ -80,41 +86,48 @@ async function ragSearch(req, res) {
         .sort((a, b) => b.similarity - a.similarity);
     }
 
-    // 3. Build RAG Context String (Posts + Comments + Replies)
+    // 3. Build RAG Context (Posts + Descriptions + Comments)
     let contextText = "";
     if (discussions.length > 0) {
       discussions.forEach((d, idx) => {
-        contextText += `\n[Discussion #${idx + 1}]\n`;
+        contextText += `\n[Matching Post #${idx + 1} - Similarity Match: ${(d.similarity * 100).toFixed(0)}%]\n`;
         contextText += `Title: ${d.title}\n`;
         if (d.buildingName) contextText += `Location: ${d.buildingName}\n`;
-        contextText += `Post Body: ${d.description}\n`;
+        contextText += `Description: ${d.description}\n`;
         if (d.comments && d.comments.length > 0) {
-          contextText += `Comments & Updates:\n`;
+          contextText += `Comments & Discussion Updates:\n`;
           d.comments.forEach((c) => {
-            contextText += `  - ${c.author?.anonymousUsername || "User"}: "${c.text}"\n`;
+            contextText += `  - Comment by ${c.author?.anonymousUsername || "User"}: "${c.text}"\n`;
             if (c.replies) {
               c.replies.forEach((r) => {
                 contextText += `    * Reply by ${r.author?.anonymousUsername || "User"}: "${r.text}"\n`;
               });
             }
           });
+        } else {
+          contextText += `Comments: No comments yet.\n`;
         }
       });
     }
 
-    // 4. Generate AI Answer using Google Gemini API
+    // 4. Generate AI Summary using Google Gemini API
     const apiKey = process.env.GEMINI_API_KEY;
     let aiAnswer = "";
 
-    if (apiKey && contextText.length > 0) {
+    if (discussions.length === 0) {
+      aiAnswer = `No campus discussions or comments with high relevance (≥ 85% similarity) were found matching "${query}". Feel free to create a new discussion topic!`;
+    } else if (apiKey && contextText.length > 0) {
       const prompt = `You are CampusCare AI, a campus assistant for students at NIT Trichy.
-Answer the student's question clearly, concisely, and accurately based ONLY on the retrieved campus discussions and comments below.
-If comments mention an update or resolution (e.g. maintenance fixed a leak, item was found, etc.), include that in your answer!
+The student asked: "${query}"
 
-Student Question: "${query}"
+Here are the top relevant campus posts, their descriptions, and user comments (filtered for >= 85% similarity):
+${contextText}
 
-Retrieved Campus Posts & Comments:
-${contextText}`;
+Instructions:
+1. Summarize the top matching posts, their descriptions, and user comments clearly as an AI Summary.
+2. Directly answer the user's question based on the post descriptions and comments.
+3. If comments mention an update, resolution, or solution (e.g. fixed, found, resolved), highlight it in your summary.
+4. Keep the summary structured, helpful, and concise.`;
 
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -129,20 +142,16 @@ ${contextText}`;
     }
 
     // Fallback AI synthesis if Gemini API key is missing or call fails
-    if (!aiAnswer) {
-      if (discussions.length > 0) {
-        const topMatchesSummary = discussions.slice(0, 3).map(d => {
-          let summary = `• "${d.title}" (${d.buildingName || 'Campus'})`;
-          if (d.comments && d.comments.length > 0) {
-            summary += ` — Latest comment: "${d.comments[0].text}"`;
-          }
-          return summary;
-        }).join('\n');
+    if (!aiAnswer && discussions.length > 0) {
+      const topMatchesSummary = discussions.map(d => {
+        let summary = `• "${d.title}" (${d.buildingName || 'Campus'}): ${d.description}`;
+        if (d.comments && d.comments.length > 0) {
+          summary += ` [Top Comment: "${d.comments[0].text}"]`;
+        }
+        return summary;
+      }).join('\n\n');
 
-        aiAnswer = `Based on campus discussions for "${query}":\n\n${topMatchesSummary}`;
-      } else {
-        aiAnswer = `No campus discussions or comments were found matching "${query}". You can create a new post to ask the community!`;
-      }
+      aiAnswer = `Here is an AI summary of top matching campus posts (≥ 85% similarity) for "${query}":\n\n${topMatchesSummary}`;
     }
 
     res.json({

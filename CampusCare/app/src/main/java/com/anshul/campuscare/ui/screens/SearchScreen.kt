@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.anshul.campuscare.data.model.Discussion
 import com.anshul.campuscare.data.repository.DiscussionRepository
-import com.anshul.campuscare.ui.components.DiscussionCard
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
