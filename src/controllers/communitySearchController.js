@@ -4,18 +4,17 @@ const { findSimilarDiscussions } = require("../services/embeddingService");
 
 async function textSearch(req, res) {
   try {
-    const { query } = req.body;
+    const query = req.body.query;
 
     if (!query) {
       return res.status(400).json({ error: "Query text is required" });
     }
 
     const matches = await findSimilarDiscussions(query, null, null, 10);
-
-    res.json({ matches });
+    return res.json({ matches: matches });
   } catch (error) {
     console.error("Text search error:", error.message);
-    res.status(500).json({ error: "Text search failed" });
+    return res.status(500).json({ error: "Text search failed" });
   }
 }
 
@@ -25,110 +24,162 @@ async function imageSearch(req, res) {
       return res.status(400).json({ error: "Image file is required" });
     }
 
-    const imagePath = `uploads/${req.file.filename}`;
+    const imagePath = "uploads/" + req.file.filename;
     const matches = await findSimilarDiscussions(null, null, imagePath, 10);
 
-    res.json({ matches });
+    return res.json({ matches: matches });
   } catch (error) {
     console.error("Image search error:", error.message);
-    res.status(500).json({ error: "Image search failed" });
+    return res.status(500).json({ error: "Image search failed" });
   }
 }
 
-/**
- * RAG Search using Groq AI (LLaMA 3.3 70B):
- * Generates a concise (~80-120 words) mentor summary with HIGH WEIGHTAGE
- * on retrieved post titles, descriptions, and user comments.
- */
 async function ragSearch(req, res) {
   try {
-    const query = req.body.query || req.query.query;
+    let query = req.body.query;
+    if (!query) {
+      query = req.query.query;
+    }
 
-    if (!query || typeof query !== "string" || !query.trim()) {
+    if (!query || typeof query !== "string" || query.trim() === "") {
       return res.status(400).json({ error: "Search query is required" });
     }
 
+    const cleanQuery = query.trim();
     const SIMILARITY_THRESHOLD = 0.55;
 
-    // 1. Vector Search in ChromaDB
-    const vectorMatches = await findSimilarDiscussions(query.trim(), null, null, 10);
+    const vectorMatches = await findSimilarDiscussions(cleanQuery, null, null, 10);
 
-    let topMatches = vectorMatches.filter((m) => m.similarity >= SIMILARITY_THRESHOLD);
+    let topMatches = [];
+    for (let i = 0; i < vectorMatches.length; i = i + 1) {
+      const matchItem = vectorMatches[i];
+      if (matchItem.similarity >= SIMILARITY_THRESHOLD) {
+        topMatches.push(matchItem);
+      }
+    }
+
     if (topMatches.length === 0 && vectorMatches.length > 0) {
       topMatches = vectorMatches.slice(0, 3);
     }
 
-    const discussionIds = topMatches.map((m) => m.discussionId);
+    let discussionIds = [];
+    let similarityMap = {};
+    for (let i = 0; i < topMatches.length; i = i + 1) {
+      const item = topMatches[i];
+      discussionIds.push(item.discussionId);
+      similarityMap[item.discussionId] = item.similarity;
+    }
 
     let discussions = [];
     if (discussionIds.length > 0) {
-      // 2. Fetch full matching discussions & comments from PostgreSQL
       const dbDiscussions = await prisma.discussion.findMany({
-        where: { id: { in: discussionIds } },
+        where: {
+          id: {
+            in: discussionIds
+          }
+        },
         include: {
-          createdBy: { select: { id: true, anonymousUsername: true, avatarColor: true } },
+          createdBy: {
+            select: {
+              id: true,
+              anonymousUsername: true,
+              avatarColor: true
+            }
+          },
           comments: {
             include: {
-              author: { select: { id: true, anonymousUsername: true, avatarColor: true } },
+              author: {
+                select: {
+                  id: true,
+                  anonymousUsername: true,
+                  avatarColor: true
+                }
+              },
               replies: {
-                include: { author: { select: { id: true, anonymousUsername: true, avatarColor: true } } }
+                include: {
+                  author: {
+                    select: {
+                      id: true,
+                      anonymousUsername: true,
+                      avatarColor: true
+                    }
+                  }
+                }
               }
             }
           },
-          _count: { select: { comments: true } }
+          _count: {
+            select: {
+              comments: true
+            }
+          }
         }
       });
 
-      // Preserve vector similarity order
-      const similarityMap = new Map(topMatches.map((m) => [m.discussionId, m.similarity]));
-      discussions = dbDiscussions
-        .map((d) => ({
-          ...d,
-          similarity: similarityMap.get(d.id) || 0
-        }))
-        .sort((a, b) => b.similarity - a.similarity);
+      for (let i = 0; i < dbDiscussions.length; i = i + 1) {
+        const d = dbDiscussions[i];
+        let simVal = 0;
+        if (similarityMap[d.id] !== undefined) {
+          simVal = similarityMap[d.id];
+        }
+        const dWithSim = Object.assign({}, d, { similarity: simVal });
+        discussions.push(dWithSim);
+      }
+
+      discussions.sort(function (a, b) {
+        return b.similarity - a.similarity;
+      });
     }
 
-    // 3. Build RAG Context String
     let contextText = "";
     if (discussions.length > 0) {
-      discussions.forEach((d, idx) => {
-        contextText += `\n[Campus Discussion #${idx + 1}]\n`;
-        contextText += `Title: ${d.title}\n`;
-        if (d.buildingName) contextText += `Location/Department: ${d.buildingName}\n`;
-        contextText += `Post Description: ${d.description}\n`;
-        if (d.comments && d.comments.length > 0) {
-          contextText += `Student Comments & Discussion Updates:\n`;
-          d.comments.forEach((c) => {
-            contextText += `  - Comment by ${c.author?.anonymousUsername || "Student"}: "${c.text}"\n`;
-            if (c.replies) {
-              c.replies.forEach((r) => {
-                contextText += `    * Reply by ${r.author?.anonymousUsername || "Student"}: "${r.text}"\n`;
-              });
-            }
-          });
-        } else {
-          contextText += `Comments: No comments posted yet.\n`;
+      for (let i = 0; i < discussions.length; i = i + 1) {
+        const d = discussions[i];
+        const indexNumber = i + 1;
+        contextText = contextText + "\n[Campus Discussion #" + indexNumber + "]\n";
+        contextText = contextText + "Title: " + d.title + "\n";
+        if (d.buildingName) {
+          contextText = contextText + "Location/Department: " + d.buildingName + "\n";
         }
-      });
+        contextText = contextText + "Post Description: " + d.description + "\n";
+        if (d.comments && d.comments.length > 0) {
+          contextText = contextText + "Student Comments & Discussion Updates:\n";
+          for (let j = 0; j < d.comments.length; j = j + 1) {
+            const c = d.comments[j];
+            let authorName = "Student";
+            if (c.author && c.author.anonymousUsername) {
+              authorName = c.author.anonymousUsername;
+            }
+            contextText = contextText + "  - Comment by " + authorName + ": \"" + c.text + "\"\n";
+            if (c.replies) {
+              for (let k = 0; k < c.replies.length; k = k + 1) {
+                const r = c.replies[k];
+                let replyAuthorName = "Student";
+                if (r.author && r.author.anonymousUsername) {
+                  replyAuthorName = r.author.anonymousUsername;
+                }
+                contextText = contextText + "    * Reply by " + replyAuthorName + ": \"" + r.text + "\"\n";
+              }
+            }
+          }
+        } else {
+          contextText = contextText + "Comments: No comments posted yet.\n";
+        }
+      }
     }
 
-    // 4. Generate Concise, High-Weightage Mentor Advice using Groq API
     const groqApiKey = process.env.GROQ_API_KEY;
     let aiAnswer = "";
 
     if (groqApiKey) {
-      const systemPrompt = `You are a concise, insightful, and encouraging Senior Academic & Campus Mentor at NIT Trichy. Your job is to analyze campus community posts, descriptions, and comments, and deliver a crisp, high-weightage summary for the student.`;
+      const systemPrompt = "You are a concise, insightful, and encouraging Senior Academic & Campus Mentor at NIT Trichy. Your job is to analyze campus community posts, descriptions, and comments, and deliver a crisp summary for the student.";
 
-      const userPrompt = `Student Query: "${query}"
+      let retrievedDataText = "No specific matching posts retrieved.";
+      if (contextText.length > 0) {
+        retrievedDataText = contextText;
+      }
 
-RETRIEVED CAMPUS COMMUNITY DATA (Post Titles, Descriptions, Locations & User Comments):
-${contextText.length > 0 ? contextText : "No specific matching posts retrieved."}
-
-MANDATORY INSTRUCTIONS:
-1. RESPONSE LENGTH: Keep your response CRISP and CONCISE (around 80 to 120 words total). Perfect for mobile reading!
-2. HIGH WEIGHTAGE ON POSTS & COMMENTS: Give HIGHEST PRIORITY to analyzing the specific post titles, descriptions, and student comments retrieved above. Directly cite and address what users reported and commented (including any status updates or fixes).
-3. MENTOR ADVICE & CONCLUSION: Structure your answer warmly. Summarize the post & comment details clearly, and conclude with a direct recommendation (e.g., "So based on student feedback and comments, you can proceed with this choice because...").`;
+      const userPrompt = "Student Query: \"" + cleanQuery + "\"\n\nRETRIEVED CAMPUS COMMUNITY DATA:\n" + retrievedDataText + "\n\nINSTRUCTIONS:\n1. Keep response crisp (80 to 120 words).\n2. Give highest priority to retrieved posts and comments.\n3. Conclude with a direct recommendation.";
 
       const groqModelsToTry = [
         "llama-3.3-70b-versatile",
@@ -136,7 +187,8 @@ MANDATORY INSTRUCTIONS:
         "mixtral-8x7b-32768"
       ];
 
-      for (const modelName of groqModelsToTry) {
+      for (let i = 0; i < groqModelsToTry.length; i = i + 1) {
+        const modelName = groqModelsToTry[i];
         try {
           const groqRes = await axios.post(
             "https://api.groq.com/openai/v1/chat/completions",
@@ -151,45 +203,61 @@ MANDATORY INSTRUCTIONS:
             },
             {
               headers: {
-                "Authorization": `Bearer ${groqApiKey}`,
+                "Authorization": "Bearer " + groqApiKey,
                 "Content-Type": "application/json"
               }
             }
           );
 
-          const responseText = groqRes.data?.choices?.[0]?.message?.content;
-          if (responseText && responseText.trim().length > 30) {
-            aiAnswer = responseText.trim();
-            break; // Success!
+          if (groqRes.data && groqRes.data.choices && groqRes.data.choices.length > 0) {
+            const choice = groqRes.data.choices[0];
+            if (choice.message && choice.message.content) {
+              const responseText = choice.message.content.trim();
+              if (responseText.length > 30) {
+                aiAnswer = responseText;
+                break;
+              }
+            }
           }
         } catch (err) {
-          const errMsg = err.response?.data?.error?.message || err.message;
-          console.error(`Groq model ${modelName} call failed:`, errMsg);
+          let errMsg = err.message;
+          if (err.response && err.response.data && err.response.data.error) {
+            errMsg = err.response.data.error.message;
+          }
+          console.error("Groq model " + modelName + " call failed:", errMsg);
         }
       }
     }
 
-    // Fallback Teacher synthesis if Groq API key is missing or calls fail
     if (!aiAnswer && discussions.length > 0) {
-      const topMatchesSummary = discussions.map(d => {
-        let summary = `• "${d.title}" (${d.buildingName || 'Campus'}): ${d.description}`;
-        if (d.comments && d.comments.length > 0) {
-          summary += ` [Comment: "${d.comments[0].text}"]`;
+      let topSummaries = [];
+      for (let i = 0; i < discussions.length; i = i + 1) {
+        const d = discussions[i];
+        let bName = "Campus";
+        if (d.buildingName) {
+          bName = d.buildingName;
         }
-        return summary;
-      }).join('\n');
-
-      aiAnswer = `Hello! Based on student posts and comments regarding "${query}":\n\n${topMatchesSummary}\n\nBased on community feedback, you can proceed with confidence!`;
+        let summary = "• \"" + d.title + "\" (" + bName + "): " + d.description;
+        if (d.comments && d.comments.length > 0) {
+          summary = summary + " [Comment: \"" + d.comments[0].text + "\"]";
+        }
+        topSummaries.push(summary);
+      }
+      aiAnswer = "Hello! Based on student posts and comments regarding \"" + cleanQuery + "\":\n\n" + topSummaries.join("\n") + "\n\nBased on community feedback, you can proceed with confidence!";
     }
 
-    res.json({
+    return res.json({
       answer: aiAnswer,
       matches: discussions
     });
   } catch (error) {
     console.error("RAG search error:", error.message);
-    res.status(500).json({ error: "RAG search failed" });
+    return res.status(500).json({ error: "RAG search failed" });
   }
 }
 
-module.exports = { textSearch, imageSearch, ragSearch };
+module.exports = {
+  textSearch,
+  imageSearch,
+  ragSearch
+};

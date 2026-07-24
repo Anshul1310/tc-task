@@ -29,7 +29,6 @@ import retrofit2.http.Url
 
 interface ApiService {
 
-    // ── Auth Endpoints ────────────────────────
 
     @GET("auth/me")
     suspend fun getCurrentUser(): Response<UserResponse>
@@ -37,7 +36,6 @@ interface ApiService {
     @POST("auth/logout")
     suspend fun logout(): Response<LogoutResponse>
 
-    // ── Community Discussions ──────────────────
 
     @GET("discussions")
     suspend fun getAllDiscussions(): Response<DiscussionsResponse>
@@ -78,7 +76,6 @@ interface ApiService {
         @Field("text") text: String
     ): Response<ReplyResponse>
 
-    // ── Community Search ────────────────────────
 
     @FormUrlEncoded
     @POST("community/search/text")
@@ -98,7 +95,6 @@ interface ApiService {
         @Field("query") query: String
     ): Response<com.anshul.campuscare.data.model.RagSearchResponse>
 
-    // ── Location / Reverse Geocoding ──────────
 
     @GET("location/reverse-geocode")
     suspend fun reverseGeocode(

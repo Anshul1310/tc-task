@@ -96,7 +96,6 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         if (response.isSuccessful && response.body() != null) {
             Result.success(response.body()!!.discussion)
         } else if (response.code() == 409) {
-            // Duplicate detected
             val errorBody = response.errorBody()?.string()
             val duplicateResponse = Gson().fromJson(errorBody, DuplicateResponse::class.java)
             Result.failure(DuplicateDiscussionException(duplicateResponse))
@@ -137,17 +136,6 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         Result.failure(e)
     }
 
-    suspend fun addReply(commentId: Int, text: String): Result<Reply> = try {
-        val response = apiService.addReply(commentId, text)
-        if (response.isSuccessful && response.body() != null) {
-            Result.success(response.body()!!.reply)
-        } else {
-            Result.failure(Exception("Failed to add reply: ${response.code()}"))
-        }
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
-
     suspend fun reverseGeocode(latitude: Double, longitude: Double): String? = try {
         val response = apiService.reverseGeocode(latitude = latitude, longitude = longitude)
         if (response.isSuccessful && response.body() != null) {
@@ -157,35 +145,6 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         null
     }
 
-    suspend fun searchDiscussionsByText(query: String): Result<List<DiscussionMatch>> = try {
-        val response = apiService.searchDiscussionsByText(query)
-        if (response.isSuccessful && response.body() != null) {
-            Result.success(response.body()!!.matches)
-        } else {
-            Result.failure(Exception("Search failed: ${response.code()}"))
-        }
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
-
-    suspend fun searchDiscussionsByImage(imageUri: Uri): Result<List<DiscussionMatch>> = try {
-        val file = getFileFromUri(imageUri)
-        if (file != null) {
-            val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-            val imagePart = MultipartBody.Part.createFormData("image", file.name, requestFile)
-            
-            val response = apiService.searchDiscussionsByImage(imagePart)
-            if (response.isSuccessful && response.body() != null) {
-                Result.success(response.body()!!.matches)
-            } else {
-                Result.failure(Exception("Image search failed: ${response.code()}"))
-            }
-        } else {
-            Result.failure(Exception("Could not read image file"))
-        }
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
 
     suspend fun ragSearch(query: String): Result<RagSearchResponse> = try {
         val response = apiService.ragSearch(query)
@@ -198,15 +157,10 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         Result.failure(e)
     }
 
-    /**
-     * Rescales and compresses an image from Uri down to max 1600px at 80% JPEG quality.
-     * Reduces 10MB camera photos to ~150KB - 300KB for fast upload & low server storage.
-     */
     private fun getFileFromUri(uri: Uri): File? {
         return try {
             val contentResolver = context.contentResolver
             
-            // 1. Decode bounds to inspect dimensions without loading into memory
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
@@ -218,7 +172,6 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
                 return getFileFromUriFallback(uri)
             }
 
-            // 2. Calculate scaling factor (max dimension 1600px)
             val maxDimension = 1600
             var inSampleSize = 1
             if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
@@ -229,7 +182,6 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
                 }
             }
 
-            // 3. Decode scaled bitmap
             val scaleOptions = BitmapFactory.Options().apply {
                 this.inSampleSize = inSampleSize
             }
@@ -237,7 +189,6 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
                 BitmapFactory.decodeStream(stream, null, scaleOptions)
             } ?: return getFileFromUriFallback(uri)
 
-            // 4. Compress to JPEG (80% quality)
             val fileName = "compressed_${System.currentTimeMillis()}_${(100..999).random()}.jpg"
             val compressedFile = File(context.cacheDir, fileName)
             val outputStream = FileOutputStream(compressedFile)

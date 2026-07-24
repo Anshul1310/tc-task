@@ -29,10 +29,6 @@ object ApiClient {
         return !getAuthToken().isNullOrEmpty()
     }
 
-    fun clearSession() {
-        sharedPreferences?.edit()?.clear()?.apply()
-    }
-
     fun getAuthToken(): String? {
         return sharedPreferences?.getString("auth_token", null)
     }
@@ -41,7 +37,6 @@ object ApiClient {
         sharedPreferences?.edit()?.putString("auth_token", token)?.apply()
     }
 
-    // ── Simple Auth Interceptor: Attach Authorization Header ──
     private val authInterceptor = Interceptor { chain ->
         val requestBuilder = chain.request().newBuilder()
 
