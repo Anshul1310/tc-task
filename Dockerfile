@@ -10,13 +10,13 @@
 # ──────────────────────────────────────────────
 
 # Stage 1: Install dependencies
-FROM node:20-alpine AS deps
+FROM node:20-alpine3.18 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
 # Stage 2: Copy app code and run
-FROM node:20-alpine
+FROM node:20-alpine3.18
 WORKDIR /app
 
 # Copy dependencies from Stage 1
