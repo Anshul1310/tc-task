@@ -183,6 +183,13 @@ class DiscussionRepository(private val apiService: ApiService, private val conte
         } else {
             Result.failure(Exception("Could not read image file"))
         }
+    suspend fun ragSearch(query: String): Result<RagSearchResponse> = try {
+        val response = apiService.ragSearch(query)
+        if (response.isSuccessful && response.body() != null) {
+            Result.success(response.body()!!)
+        } else {
+            Result.failure(Exception("RAG search failed: ${response.code()}"))
+        }
     } catch (e: Exception) {
         Result.failure(e)
     }

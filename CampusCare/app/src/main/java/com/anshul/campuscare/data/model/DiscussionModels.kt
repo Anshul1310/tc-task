@@ -88,3 +88,8 @@ data class DiscussionMatch(
     val description: String,
     val similarity: Double
 )
+
+data class RagSearchResponse(
+    val answer: String,
+    val matches: List<Discussion>
+)

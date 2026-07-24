@@ -126,6 +126,22 @@ fun AppNavigation() {
                 },
                 onNavigateToCreate = {
                     navController.navigate(route = "community/create")
+                },
+                onNavigateToSearch = {
+                    navController.navigate(route = "community/search")
+                }
+            )
+        }
+
+        // ── RAG Search Screen ─────────────────
+        composable(route = "community/search") {
+            com.anshul.campuscare.ui.screens.SearchScreen(
+                discussionRepository = discussionRepository,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToDetail = { id: Int ->
+                    navController.navigate(route = "community/detail/$id")
                 }
             )
         }

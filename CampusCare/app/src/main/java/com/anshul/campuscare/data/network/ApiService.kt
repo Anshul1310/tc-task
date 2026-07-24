@@ -92,6 +92,12 @@ interface ApiService {
         @Part image: MultipartBody.Part
     ): Response<SearchDiscussionsResponse>
 
+    @FormUrlEncoded
+    @POST("community/search/rag")
+    suspend fun ragSearch(
+        @Field("query") query: String
+    ): Response<com.anshul.campuscare.data.model.RagSearchResponse>
+
     // ── Location / Reverse Geocoding ──────────
 
     @GET("location/reverse-geocode")

@@ -21,5 +21,6 @@ const searchUpload = multer({
 
 router.post("/search/text", requireAuth, searchController.textSearch);
 router.post("/search/image", requireAuth, searchUpload.single("image"), searchController.imageSearch);
+router.post("/search/rag", requireAuth, searchController.ragSearch);
 
 module.exports = router;

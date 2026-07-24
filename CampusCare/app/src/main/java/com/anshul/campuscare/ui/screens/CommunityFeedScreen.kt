@@ -30,7 +30,8 @@ import kotlinx.coroutines.launch
 fun CommunityFeedScreen(
     discussionRepository: DiscussionRepository,
     onNavigateToDetail: (Int) -> Unit,
-    onNavigateToCreate: () -> Unit
+    onNavigateToCreate: () -> Unit,
+    onNavigateToSearch: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     var discussions by remember { mutableStateOf<List<Discussion>>(emptyList()) }
@@ -38,24 +39,29 @@ fun CommunityFeedScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Recent", "Trending")
+    val tabs = listOf("All", "Trending")
+
+    fun loadDiscussions() {
+        isLoading = true
+        coroutineScope.launch {
+            val result = if (selectedTab == 0) {
+                discussionRepository.getAllDiscussions()
+            } else {
+                discussionRepository.getTrendingDiscussions()
+            }
+
+            result.onSuccess { data ->
+                discussions = data
+                isLoading = false
+            }.onFailure { error ->
+                errorMessage = error.message
+                isLoading = false
+            }
+        }
+    }
 
     LaunchedEffect(selectedTab) {
-        isLoading = true
-        errorMessage = null
-        val result = if (selectedTab == 0) {
-            discussionRepository.getAllDiscussions()
-        } else {
-            discussionRepository.getTrendingDiscussions()
-        }
-
-        result.onSuccess { data ->
-            discussions = data
-            isLoading = false
-        }.onFailure { error ->
-            errorMessage = error.message
-            isLoading = false
-        }
+        loadDiscussions()
     }
 
     Scaffold(
@@ -63,7 +69,7 @@ fun CommunityFeedScreen(
             TopAppBar(
                 title = { Text("Community", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { /* Search Action */ }) {
+                    IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
                     }
                 }
