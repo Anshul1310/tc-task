@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
  */
 object ApiClient {
 
-    const val BASE_URL: String = "http://192.168.1.33:3000/"
+    const val BASE_URL: String = "http://65.2.81.129:3000/"
 
     private var sharedPreferences: SharedPreferences? = null
 
