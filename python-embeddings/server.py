@@ -7,20 +7,15 @@ from typing import Optional
 import chromadb
 from fastapi import FastAPI, File, Form, UploadFile
 from fastembed import ImageEmbedding, TextEmbedding
-from pydantic import BaseModel
 
-# ── Initialize FastAPI ────────────────────────
 app = FastAPI(
     title="Embedding & ChromaDB Service",
     description="FastEmbed + Persistent ChromaDB for vector similarity search",
 )
 
-# ── Persistent ChromaDB Client ────────────────
-# Data is saved locally in ./chroma_db folder
 chroma_path = os.path.join(os.path.dirname(__file__), "chroma_db")
 chroma_client = chromadb.PersistentClient(path=chroma_path)
 
-# Create/get collections using cosine distance
 text_collection = chroma_client.get_or_create_collection(
     name="discussions_text", metadata={"hnsw:space": "cosine"}
 )
@@ -28,7 +23,6 @@ image_collection = chroma_client.get_or_create_collection(
     name="discussions_image", metadata={"hnsw:space": "cosine"}
 )
 
-# ── FastEmbed Models ──────────────────────────
 print("[FastEmbed] Loading text model: BAAI/bge-small-en-v1.5 ...")
 text_model = TextEmbedding("BAAI/bge-small-en-v1.5")
 
@@ -47,7 +41,6 @@ def health_check():
     }
 
 
-# ── Helper: Save Uploaded File to Temp Path ────
 def save_temp_file(file: UploadFile) -> str:
     temp_dir = tempfile.gettempdir()
     temp_path = os.path.join(temp_dir, file.filename)
@@ -56,8 +49,7 @@ def save_temp_file(file: UploadFile) -> str:
     return temp_path
 
 
-# ── Index Discussion ──────────────────────────
-# Stores text and/or image embeddings in ChromaDB
+
 @app.post("/discussions/index")
 def index_discussion(
     discussion_id: str = Form(...),
@@ -93,8 +85,7 @@ def index_discussion(
     return {"status": "indexed", "discussion_id": discussion_id}
 
 
-# ── Find Similar Discussions ──────────────────
-# Queries ChromaDB for duplicate check or search
+
 @app.post("/discussions/find_similar")
 def find_similar_discussions(
     title: Optional[str] = Form(None),
@@ -147,7 +138,6 @@ def find_similar_discussions(
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
-    # Sort matches by similarity descending
     matches = [
         {"discussionId": d_id, "similarity": sim}
         for d_id, sim in sorted(scores.items(), key=lambda item: item[1], reverse=True)
@@ -156,7 +146,6 @@ def find_similar_discussions(
     return {"matches": matches[:limit]}
 
 
-# ── Delete Discussion Vector ──────────────────
 @app.delete("/discussions/{discussion_id}")
 def delete_discussion(discussion_id: str):
     try:

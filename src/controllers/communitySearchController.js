@@ -95,7 +95,7 @@ async function ragSearch(req, res) {
         if (similarityMap[d.id] !== undefined) {
           simVal = similarityMap[d.id];
         }
-        const dWithSim = Object.assign({}, d, { similarity: simVal });
+        const dWithSim = { ...d, similarity: simVal };
         discussions.push(dWithSim);
       }
 
@@ -135,14 +135,14 @@ async function ragSearch(req, res) {
     let aiAnswer = "";
 
     if (groqApiKey) {
-      const systemPrompt = "You are a concise, insightful, and encouraging Senior Academic & Campus Mentor at NIT Trichy. Your job is to analyze campus community posts, descriptions, and comments, and deliver a crisp summary for the student.";
+      const systemPrompt = "You are a concise, insightful, and encouraging Senior Academic & Campus Mentor at NIT Trichy. Your job is to analyze campus community posts, descriptions, and comments, and deliver a summary for the student.";
 
       let retrievedDataText = "No specific matching posts retrieved.";
       if (contextText.length > 0) {
         retrievedDataText = contextText;
       }
 
-      const userPrompt = "Student Query: \"" + cleanQuery + "\"\n\nRETRIEVED CAMPUS COMMUNITY DATA:\n" + retrievedDataText + "\n\nINSTRUCTIONS:\n1. Keep response crisp (80 to 120 words).\n2. Give highest priority to retrieved posts and comments.\n3. Conclude with a direct recommendation.";
+      const userPrompt = "Student Query: \"" + cleanQuery + "\"\n\nRETRIEVED CAMPUS COMMUNITY DATA:\n" + retrievedDataText + "\n\nINSTRUCTIONS:\n1. Response must be as a senior guiding with pros and cons.\n2. Give highest priority to retrieved posts and comments.\n3. Conclude with a direct recommendation.";
 
       const groqModelsToTry = [
         "llama-3.3-70b-versatile",

@@ -155,7 +155,6 @@ async function getAllDiscussions(req, res) {
 
 async function getTrendingDiscussions(req, res) {
   try {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const discussions = await prisma.discussion.findMany({
       include: {
         createdBy: {
@@ -171,29 +170,13 @@ async function getTrendingDiscussions(req, res) {
           }
         }
       },
-      where: {
-        createdAt: {
-          gte: sevenDaysAgo
-        }
-      }
+      orderBy: {
+        upvoteCount: "desc"
+      },
+      take: 20
     });
 
-    let scoredDiscussions = [];
-    for (let i = 0; i < discussions.length; i = i + 1) {
-      const item = discussions[i];
-      const commentsCount = item._count.comments;
-      const score = (item.upvoteCount * 2) + commentsCount;
-      const itemWithScore = Object.assign({}, item, { score: score });
-      scoredDiscussions.push(itemWithScore);
-    }
-
-    scoredDiscussions.sort(function (a, b) {
-      return b.score - a.score;
-    });
-
-    const topTrending = scoredDiscussions.slice(0, 20);
-
-    return res.json({ discussions: topTrending });
+    return res.json({ discussions: discussions });
   } catch (error) {
     console.error("Get trending error:", error.message);
     return res.status(500).json({ error: "Failed to fetch trending discussions" });
@@ -247,13 +230,11 @@ async function getDiscussionById(req, res) {
       return res.status(404).json({ error: "Discussion not found" });
     }
 
-    let hasUpvoted = false;
-    if (discussion.upvotes.length > 0) {
-      hasUpvoted = true;
-    }
-
-    const response = Object.assign({}, discussion, { hasUpvoted: hasUpvoted });
-    delete response.upvotes;
+    const { upvotes, ...discussionData } = discussion;
+    const response = {
+      ...discussionData,
+      hasUpvoted: upvotes.length > 0
+    };
 
     let relatedDiscussions = [];
     try {
@@ -307,7 +288,7 @@ async function getDiscussionById(req, res) {
           if (similarityMap[relItem.id] !== undefined) {
             simVal = similarityMap[relItem.id];
           }
-          const relWithSim = Object.assign({}, relItem, { similarity: simVal });
+          const relWithSim = { ...relItem, similarity: simVal };
           relatedDiscussions.push(relWithSim);
         }
 
