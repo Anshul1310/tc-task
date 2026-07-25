@@ -1,10 +1,4 @@
-// ──────────────────────────────────────────────
-// Helper Utilities
-//
-// Small reusable functions used across the app.
-// ──────────────────────────────────────────────
 
-// Format Prisma/Multer errors into cleaner messages
 function formatError(error) {
   if (error.code === "P2002") {
     return "A record with this value already exists";
