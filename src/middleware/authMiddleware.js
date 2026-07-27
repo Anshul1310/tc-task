@@ -1,9 +1,4 @@
-// ──────────────────────────────────────────────
-// Auth Middleware
-//
-// Extracts Authorization: Bearer <token> header,
-// verifies the token, and attaches the user from DB.
-// ──────────────────────────────────────────────
+
 
 const prisma = require("../config/db");
 const { verifyToken } = require("../utils/token");

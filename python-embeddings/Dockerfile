@@ -1,9 +1,4 @@
-# ──────────────────────────────────────────────
-# Dockerfile for the Python Embedding Server
-#
-# Uses FastEmbed (ONNX-based) so no PyTorch
-# is needed. Keeps the image small.
-# ──────────────────────────────────────────────
+
 
 FROM python:3.11-slim
 
